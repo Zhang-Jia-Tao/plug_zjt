@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>程序员便利贴</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">📌</span>
+      <span class="title">程序员便利贴</span>
+    </div>
+    <button id="btn-new" class="btn btn-primary" title="新建便利贴">+ 新建</button>
+  </header>
+
+  <div class="filters">
+    <div class="tabs" id="category-tabs">
+      <!-- 由 JS 注入：全部 + 各分类 -->
+    </div>
+    <input id="search" class="search" type="search" placeholder="🔍 搜索标题/内容…" />
+  </div>
+
+  <main id="note-list" class="note-list">
+    <!-- 便利贴卡片 -->
+  </main>
+
+  <!-- 编辑面板（覆盖层） -->
+  <div id="editor" class="editor hidden">
+    <div class="editor-card">
+      <div class="editor-head">
+        <span id="editor-mode">新建便利贴</span>
+        <button id="editor-close" class="btn-icon" title="关闭">✕</button>
+      </div>
+      <label class="field">
+        <span>分类</span>
+        <select id="f-category"></select>
+      </label>
+      <label class="field">
+        <span>标题</span>
+        <input id="f-title" type="text" placeholder="标题" />
+      </label>
+      <label class="field">
+        <span>内容</span>
+        <textarea id="f-content" rows="6" placeholder="正文内容…"></textarea>
+      </label>
+      <label class="field" id="field-account">
+        <span>账号</span>
+        <input id="f-username" type="text" placeholder="用户名/账号" />
+      </label>
+      <label class="field" id="field-password">
+        <span>密码</span>
+        <div class="input-with-action">
+          <input id="f-password" type="text" placeholder="密码" />
+          <button type="button" id="btn-genpwd" class="btn-ghost" title="生成随机密码">🎲</button>
+        </div>
+      </label>
+      <label class="field" id="field-url">
+        <span>链接</span>
+        <input id="f-url" type="text" placeholder="https://…" />
+      </label>
+      <label class="field" id="field-remind">
+        <span>提醒时间</span>
+        <input id="f-remind" type="datetime-local" />
+      </label>
+      <label class="field-inline">
+        <input id="f-pinned" type="checkbox" />
+        <span>⭐ 置顶</span>
+      </label>
+      <div class="editor-actions">
+        <button id="btn-delete" class="btn btn-danger hidden">删除</button>
+        <button id="btn-save" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="bottombar">
+    <button id="btn-export" class="btn btn-ghost" title="导出备份">⬇ 导出</button>
+    <button id="btn-sync" class="btn btn-ghost" title="同步 Notion">🔄 同步</button>
+    <button id="btn-options" class="btn btn-ghost" title="设置">⚙ 设置</button>
+  </footer>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

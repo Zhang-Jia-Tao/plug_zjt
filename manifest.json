@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "程序员便利贴",
+  "version": "1.0.0",
+  "description": "记录测试环境、正式环境、账号、需求、缺陷、BUG、网址、提醒、会议等工作信息，支持本地文件夹与 Notion 云同步。",
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "downloads",
+    "activeTab",
+    "alarms",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://api.notion.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "程序员便利贴",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

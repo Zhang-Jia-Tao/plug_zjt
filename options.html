@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>便利贴 · 设置</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>⚙ 程序员便利贴 · 设置</h1>
+
+    <section class="card">
+      <h2>📁 本地文件夹</h2>
+      <p class="hint">绑定后，每条便利贴会实时写入 <code>&lt;文件夹&gt;/&lt;分类&gt;/&lt;id&gt;.md</code>，方便用编辑器/同步盘查看。</p>
+      <div class="row">
+        <span class="label">当前绑定：</span>
+        <span id="folder-name" class="value">未绑定</span>
+        <button id="btn-bind" class="btn-primary">绑定文件夹</button>
+        <button id="btn-unbind" class="btn-ghost hidden">解绑</button>
+      </div>
+      <div class="row">
+        <button id="btn-sync-folder" class="btn-ghost">立即同步全部到文件夹</button>
+        <span id="folder-sync-result" class="value"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>☁ Notion 云同步</h2>
+      <p class="hint">
+        配置步骤：① 访问 <a href="https://www.notion.so/my-integrations" target="_blank">my-integrations</a> 创建 integration，复制 <code>secret_xxx</code>；<br/>
+        ② 在 Notion 新建 database，列设为：Title(title)、Category(select)、Content(rich_text)、URL(url)、Username(rich_text)、Password(rich_text)、RemindAt(date)、Pinned(checkbox)、NoteID(rich_text)；<br/>
+        ③ 把该 database 分享给刚才的 integration；④ 复制 database URL 末段 ID 填入下方。
+      </p>
+      <div class="row">
+        <span class="label">Token：</span>
+        <input id="notion-token" type="password" placeholder="secret_xxx" class="input" />
+      </div>
+      <div class="row">
+        <span class="label">Database ID：</span>
+        <input id="notion-db" type="text" placeholder="32位ID" class="input" />
+      </div>
+      <div class="row">
+        <button id="btn-test" class="btn-primary">测试连接</button>
+        <span id="test-result" class="value"></span>
+      </div>
+      <div class="row">
+        <span class="label">最近同步：</span>
+        <span id="last-sync" class="value">从未</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>💾 备份导入</h2>
+      <p class="hint">从导出的 JSON 备份文件恢复便利贴（会覆盖当前所有数据）。</p>
+      <div class="row">
+        <input id="import-file" type="file" accept=".json" />
+        <button id="btn-import" class="btn-primary">导入并覆盖</button>
+        <span id="import-result" class="value"></span>
+      </div>
+    </section>
+
+    <p class="foot">提示：本地文件夹与 Notion 均为镜像，主数据始终在浏览器存储中。</p>
+  </div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>
