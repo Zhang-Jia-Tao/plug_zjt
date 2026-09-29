@@ -41,10 +41,17 @@
         <span>标题</span>
         <input id="f-title" type="text" placeholder="标题" />
       </label>
-      <label class="field">
+      <label class="field" id="field-content">
         <span>内容</span>
         <textarea id="f-content" rows="6" placeholder="正文内容…"></textarea>
       </label>
+      <div class="field" id="field-blocks">
+        <span>内容块</span>
+        <div id="block-editor" class="block-editor">
+          <!-- 多内容块由 JS 注入 -->
+        </div>
+        <button type="button" id="btn-add-block" class="btn btn-ghost block-add-btn">+ 添加内容块</button>
+      </div>
       <label class="field" id="field-account">
         <span>账号</span>
         <input id="f-username" type="text" placeholder="用户名/账号" />
@@ -60,6 +67,13 @@
         <span>链接</span>
         <input id="f-url" type="text" placeholder="https://…" />
       </label>
+      <div class="field" id="field-tasks">
+        <span>任务清单</span>
+        <div id="task-editor" class="task-editor">
+          <!-- 任务行由 JS 注入 -->
+        </div>
+        <button type="button" id="btn-add-task" class="btn btn-ghost task-add-btn">+ 添加任务</button>
+      </div>
       <label class="field" id="field-remind">
         <span>提醒时间</span>
         <input id="f-remind" type="datetime-local" />

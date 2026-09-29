@@ -2,7 +2,7 @@
 // 职责：消息路由、Notion API 执行、chrome.alarms 提醒、chrome.notifications、chrome.downloads 导出
 // 所有状态在 chrome.storage，SW 重启可重建。不在内存缓存数据。
 
-import { getAllNotes, getNote, saveNote, deleteNote, getSettings, setSettings, replaceAllNotes, sortNotes, reorderNotes } from './lib/store.js';
+import { getAllNotes, getNote, saveNote, deleteNote, getSettings, setSettings, replaceAllNotes, sortNotes, reorderNotes, markReminded, toggleTask } from './lib/store.js';
 import * as notion from './lib/notion.js';
 import { getCategory } from './lib/categories.js';
 
@@ -24,6 +24,12 @@ async function rebuildAlarms() {
   for (const n of future) {
     chrome.alarms.create(n.id, { when: new Date(n.remindAt).getTime() });
   }
+  // 补发错过的提醒：时间已过且未标记 reminded
+  const missed = notes.filter(n => n.remindAt && new Date(n.remindAt).getTime() <= now && !n.reminded);
+  for (const n of missed) {
+    fireNotification(n);
+    await markReminded(n.id);
+  }
 }
 
 // ---- 提醒触发 ----
@@ -31,15 +37,21 @@ async function rebuildAlarms() {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   const note = await getNote(alarm.name);
   if (!note) return;
+  fireNotification(note);
+  await markReminded(note.id);
+});
+
+// 弹系统通知
+function fireNotification(note) {
   const cat = getCategory(note.category);
   chrome.notifications.create(note.id, {
     type: 'basic',
     iconUrl: 'icons/icon128.png',
     title: `${cat.icon} ${cat.label}：${note.title}`,
-    message: note.content.slice(0, 200) || '提醒时间到了',
+    message: (note.content || '提醒时间到了').slice(0, 200),
     priority: 2,
   });
-});
+}
 
 chrome.notifications.onClicked.addListener((notifId) => {
   // 记录待聚焦便利贴，由 sidepanel 启动时读取
@@ -93,6 +105,9 @@ async function handleMessage(msg, sender) {
     case 'reorder':
       return await reorderNotes(payload.ids);
 
+    case 'toggleTask':
+      return await toggleTask(payload.noteId, payload.taskId);
+
     case 'getSettings':
       return await getSettings();
 
@@ -136,6 +151,8 @@ async function handleMessage(msg, sender) {
         ...n,
         createdAt: localMap[n.id]?.createdAt || n.createdAt,
         pinned: localMap[n.id]?.pinned ?? n.pinned,
+        tasks: localMap[n.id]?.tasks ?? n.tasks ?? [], // 保留本地任务清单（Notion 无此字段）
+        blocks: localMap[n.id]?.blocks ?? n.blocks ?? [], // 保留本地多内容块（Notion 无此字段）
       }));
       await replaceAllNotes(merged);
       await setSettings({ notionLastSync: new Date().toISOString() });
