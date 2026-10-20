@@ -2,7 +2,7 @@
 // 通过 chrome.runtime.sendMessage 与 background 通信做 CRUD/Notion/导出。
 // 本地文件夹同步：saveNote/deleteNote 后直接调用 fs.js（页面上下文可用 File System Access API）。
 
-import { CATEGORIES, getCategory, REMINDER_CATEGORIES, URL_CATEGORIES, ACCOUNT_CATEGORIES, LINKABLE_CATEGORIES, TASK_LIST_CATEGORY, FLASH_CATEGORY, ENV_CATEGORIES, MULTI_BLOCK_CATEGORIES } from './lib/categories.js';
+import { CATEGORIES, getCategory, REMINDER_CATEGORIES, URL_CATEGORIES, ACCOUNT_CATEGORIES, LINKABLE_CATEGORIES, TASK_LIST_CATEGORY, FLASH_CATEGORY, ENV_CATEGORIES, MULTI_BLOCK_CATEGORIES, SSH_CONFIG_CATEGORY, PERSONAL_INFO_CATEGORY } from './lib/categories.js';
 import { writeNoteFile, deleteNoteFile, syncFolderAll, getFolderHandle } from './lib/fs.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -91,13 +91,22 @@ function toggleConditionalFields() {
   const isFlash = cat === FLASH_CATEGORY;
   const isEnv = ENV_CATEGORIES.includes(cat);
   const isMultiBlock = MULTI_BLOCK_CATEGORIES.includes(cat);
+  const isSsh = cat === SSH_CONFIG_CATEGORY;
+  const isPersonalInfo = cat === PERSONAL_INFO_CATEGORY;
   // 快闪笔记：只保留分类 + 内容，隐藏其余所有字段
   $('#f-title').closest('.field').classList.toggle('hidden', isFlash);
-  $('#field-content').classList.toggle('hidden', isFlash === false && (isEnv || isMultiBlock));
+  $('#field-content').classList.toggle('hidden', isFlash === false && (isEnv || isMultiBlock || isSsh || isPersonalInfo));
   $('#field-blocks').classList.toggle('hidden', !isMultiBlock);
-  $('#field-url').classList.toggle('hidden', !isUrl || isFlash);
-  $('#field-account').classList.toggle('hidden', !isAccount || isFlash);
-  $('#field-password').classList.toggle('hidden', !isAccount || isFlash);
+  $('#field-url').classList.toggle('hidden', (!isUrl && !isSsh) || isFlash);
+  $('#field-account').classList.toggle('hidden', (!isAccount && !isSsh) || isFlash);
+  $('#field-password').classList.toggle('hidden', (!isAccount && !isSsh) || isFlash);
+  $('#field-ssh-host').classList.toggle('hidden', !isSsh || isFlash);
+  $('#field-ssh-port').classList.toggle('hidden', !isSsh || isFlash);
+  $('#field-pi-name').classList.toggle('hidden', !isPersonalInfo || isFlash);
+  $('#field-pi-phone').classList.toggle('hidden', !isPersonalInfo || isFlash);
+  $('#field-pi-email').classList.toggle('hidden', !isPersonalInfo || isFlash);
+  $('#field-pi-idcard').classList.toggle('hidden', !isPersonalInfo || isFlash);
+  $('#field-pi-custom').classList.toggle('hidden', !isPersonalInfo || isFlash);
   $('#field-remind').classList.toggle('hidden', !isReminder || isFlash);
   $('#field-tasks').classList.toggle('hidden', !isTaskList || isFlash);
   $('.field-inline').classList.toggle('hidden', isFlash); // 置顶开关
@@ -335,6 +344,17 @@ function renderCoreBlock(n, allNotes = []) {
         ? `<div class="note-card-content flash-content">${escapeHtml(n.content)}</div>`
         : '<div class="note-card-content muted">（无内容）</div>';
 
+    case 'ssh_config':
+      // SSH 配置：host/port/user/password 各一行，可点击复制
+      return `
+        ${renderSshConfigRows(n)}
+        ${n.content ? `<div class="note-card-content">${escapeHtml(n.content.slice(0, 80))}</div>` : ''}
+      `;
+
+    case 'personal_info':
+      // 个人信息：姓名/电话/邮箱/身份证 + 自定义标签，各一行可点击复制
+      return renderPersonalInfoRows(n);
+
     default:
       // 需求/缺陷/BUG 等：多内容块展示
       return renderBlocks(n);
@@ -353,6 +373,51 @@ function renderBlocks(n) {
       <div class="block-text">${escapeHtml(b.text)}</div>
     </div>
   `).join('');
+}
+
+// 渲染 SSH 配置行：host/port/user/password 各一行可点击复制
+function renderSshConfigRows(n) {
+  return [
+    { label: 'Host', value: n.host || n.url || '' },
+    { label: 'Port', value: n.port || '' },
+    { label: 'User', value: n.username || '' },
+    { label: 'Password', value: n.password || '', masked: true },
+  ].filter(r => r.value).map(r => {
+    if (r.masked) {
+      return `<div class="cred-row" data-copy="${escapeAttr(r.value)}" title="点击复制密码">
+        <span class="cred-label">${r.label}</span>
+        <span class="cred-val masked" data-pwd="${escapeAttr(r.value)}">${maskPwd(r.value)}</span>
+      </div>`;
+    }
+    return `<div class="cred-row" data-copy="${escapeAttr(r.value)}" title="点击复制${r.label}">
+      <span class="cred-label">${r.label}</span>
+      <span class="cred-val">${escapeHtml(r.value)}</span>
+    </div>`;
+  }).join('') || '<div class="note-card-content muted">（无 SSH 参数）</div>';
+}
+
+// 渲染个人信息行：姓名/电话/邮箱/身份证 + 自定义标签，各一行可点击复制
+function renderPersonalInfoRows(n) {
+  const rows = [
+    { label: '姓名', value: n.name || '' },
+    { label: '电话', value: n.phone || '' },
+    { label: '邮箱', value: n.email || '' },
+    { label: '身份证号', value: n.idCard || '', masked: true },
+    ...(Array.isArray(n.fields) ? n.fields.map(f => ({ label: f.label || '自定义', value: f.value || '' })) : []),
+  ].filter(r => r.value);
+  if (rows.length === 0) return '<div class="note-card-content muted">（无信息）</div>';
+  return rows.map(r => {
+    if (r.masked) {
+      return `<div class="cred-row" data-copy="${escapeAttr(r.value)}" title="点击复制${r.label}">
+        <span class="cred-label">${escapeHtml(r.label)}</span>
+        <span class="cred-val masked" data-pwd="${escapeAttr(r.value)}">${maskPwd(r.value)}</span>
+      </div>`;
+    }
+    return `<div class="cred-row" data-copy="${escapeAttr(r.value)}" title="点击复制${r.label}">
+      <span class="cred-label">${escapeHtml(r.label)}</span>
+      <span class="cred-val">${escapeHtml(r.value)}</span>
+    </div>`;
+  }).join('');
 }
 
 // 渲染规划清单任务列表（卡片上）
@@ -459,6 +524,20 @@ function buildCopyText(n) {
     case 'flash':
       // 快闪笔记：复制内容
       return n.content || n.title;
+    case 'ssh_config':
+      // SSH 配置：host user port password
+      return [n.host && `Host: ${n.host}`, n.port && `Port: ${n.port}`, n.username && `User: ${n.username}`, n.password && `Password: ${n.password}`, n.content].filter(Boolean).join('\n');
+    case 'personal_info': {
+      // 个人信息：内置字段 + 自定义标签
+      const custom = (Array.isArray(n.fields) ? n.fields : []).filter(f => f.label || f.value).map(f => `${f.label}: ${f.value}`);
+      return [
+        n.name && `姓名: ${n.name}`,
+        n.phone && `电话: ${n.phone}`,
+        n.email && `邮箱: ${n.email}`,
+        n.idCard && `身份证号: ${n.idCard}`,
+        ...custom,
+      ].filter(Boolean).join('\n');
+    }
     default: {
       // 需求/缺陷/BUG：复制各内容块（带编号）
       const blocks = Array.isArray(n.blocks) && n.blocks.length ? n.blocks : (n.content ? [{ text: n.content }] : []);
@@ -513,11 +592,20 @@ function openEditor(note, presetCategory) {
   $('#f-username').value = note?.username || '';
   $('#f-password').value = note?.password || '';
   $('#f-url').value = note?.url || '';
+  $('#f-ssh-host').value = note?.host || '';
+  $('#f-ssh-port').value = note?.port || '';
+  $('#f-pi-name').value = note?.name || '';
+  $('#f-pi-phone').value = note?.phone || '';
+  $('#f-pi-email').value = note?.email || '';
+  $('#f-pi-idcard').value = note?.idCard || '';
   $('#f-remind').value = note?.remindAt ? toLocalInput(note.remindAt) : '';
   $('#f-pinned').checked = !!note?.pinned;
   // 加载任务清单（规划清单类）
   editingTasks = Array.isArray(note?.tasks) ? note.tasks.map(t => ({ ...t })) : [];
   renderTaskEditor();
+  // 加载个人信息自定义标签
+  editingPiFields = Array.isArray(note?.fields) ? note.fields.map(f => ({ ...f })) : [];
+  renderPiFieldEditor();
   // 加载多内容块（需求/缺陷/BUG 类）；若 blocks 为空但有 content，回退成单块
   if (Array.isArray(note?.blocks) && note.blocks.length) {
     editingBlocks = note.blocks.map(b => ({ ...b }));
@@ -537,6 +625,7 @@ function closeEditor() {
   editingId = null;
   editingTasks = [];
   editingBlocks = [];
+  editingPiFields = [];
   linkedOptionsCache = null;
 }
 
@@ -681,6 +770,62 @@ function collectBlocks() {
   })).filter(b => b.text);
 }
 
+// ---- 个人信息自定义标签编辑（personal_info 类）----
+let editingPiFields = []; // 当前编辑中的自定义标签数组 [{ id, label, value }]
+
+function renderPiFieldEditor() {
+  const box = $('#pi-field-editor');
+  box.innerHTML = '';
+  if (editingPiFields.length === 0) {
+    box.innerHTML = '<div class="task-empty">暂无自定义标签，点下方添加</div>';
+    return;
+  }
+  editingPiFields.forEach((f, i) => {
+    const row = document.createElement('div');
+    row.className = 'pi-edit-row';
+    row.dataset.idx = i;
+    row.innerHTML = `
+      <input type="text" class="pi-label" value="${escapeAttr(f.label || '')}" placeholder="标签名" />
+      <input type="text" class="pi-value" value="${escapeAttr(f.value || '')}" placeholder="内容" />
+      <button type="button" class="pi-del" title="删除该标签">✕</button>
+    `;
+    box.appendChild(row);
+  });
+}
+
+function bindPiFieldEditorEvents() {
+  $('#btn-add-pi-field').addEventListener('click', () => {
+    editingPiFields.push({ id: crypto.randomUUID(), label: '', value: '' });
+    renderPiFieldEditor();
+    const rows = $('#pi-field-editor').querySelectorAll('.pi-edit-row');
+    if (rows.length) rows[rows.length - 1].querySelector('.pi-label').focus();
+  });
+  $('#pi-field-editor').addEventListener('click', (e) => {
+    if (e.target.classList.contains('pi-del')) {
+      const row = e.target.closest('.pi-edit-row');
+      const idx = +row.dataset.idx;
+      editingPiFields.splice(idx, 1);
+      renderPiFieldEditor();
+    }
+  });
+  $('#pi-field-editor').addEventListener('input', (e) => {
+    const row = e.target.closest('.pi-edit-row');
+    if (!row) return;
+    const idx = +row.dataset.idx;
+    if (e.target.classList.contains('pi-label')) editingPiFields[idx].label = e.target.value;
+    if (e.target.classList.contains('pi-value')) editingPiFields[idx].value = e.target.value;
+  });
+}
+
+// 收集自定义标签（保存时调用）
+function collectPiFields() {
+  return editingPiFields.map(f => ({
+    id: f.id || crypto.randomUUID(),
+    label: (f.label || '').trim(),
+    value: (f.value || '').trim(),
+  })).filter(f => f.label || f.value);
+}
+
 function toLocalInput(iso) {
   const d = new Date(iso);
   const pad = (x) => String(x).padStart(2, '0');
@@ -713,6 +858,13 @@ async function onSave() {
     title,
     content,
     blocks,
+    host: $('#f-ssh-host').value.trim(),
+    port: $('#f-ssh-port').value.trim(),
+    name: $('#f-pi-name').value.trim(),
+    phone: $('#f-pi-phone').value.trim(),
+    email: $('#f-pi-email').value.trim(),
+    idCard: $('#f-pi-idcard').value.trim(),
+    fields: category === PERSONAL_INFO_CATEGORY ? collectPiFields() : [],
     username: $('#f-username').value.trim(),
     password: $('#f-password').value,
     url: $('#f-url').value.trim(),
@@ -806,6 +958,7 @@ function bindEvents() {
   });
   bindTaskEditorEvents();
   bindBlockEditorEvents();
+  bindPiFieldEditorEvents();
   $('#btn-export').addEventListener('click', onExport);
   $('#btn-sync').addEventListener('click', onSync);
   $('#btn-options').addEventListener('click', onOptions);

@@ -73,7 +73,7 @@ body {
 }
 .pcred:hover { background: #f0ede2; }
 .pcred.copied { background: #e3f2e4; outline: 1px solid #2e7d32; }
-.pcred-l { width: 28px; color: var(--muted); flex-shrink: 0; }
+.pcred-l { min-width: 32px; width: auto; flex-shrink: 0; color: var(--muted); }
 .pcred-v {
   flex: 1; font-family: "Consolas","Menlo",monospace; font-size: 11px;
   background: #f7f5ec; padding: 2px 5px; border-radius: 4px;

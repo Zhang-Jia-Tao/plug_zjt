@@ -133,6 +133,10 @@ function renderCoreBlock(n, allNotes = []) {
     }
     case 'flash':
       return n.content ? `<div class="pcard-content flash">${escapeHtml(n.content.slice(0, 120))}</div>` : '';
+    case 'ssh_config':
+      return renderSshConfigRows(n);
+    case 'personal_info':
+      return renderPersonalInfoRows(n);
     default: {
       // 需求/缺陷/BUG 等：取首个内容块预览
       const blocks = Array.isArray(n.blocks) && n.blocks.length ? n.blocks : (n.content ? [{ text: n.content }] : []);
@@ -181,6 +185,37 @@ function escapeAttr(s) {
   return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
 }
 
+// SSH 配置行（popup 精简版）
+function renderSshConfigRows(n) {
+  return [
+    { label: 'Host', value: n.host || n.url || '' },
+    { label: 'Port', value: n.port || '' },
+    { label: 'User', value: n.username || '' },
+    { label: 'Password', value: n.password || '', masked: true },
+  ].filter(r => r.value).map(r => {
+    return `<div class="pcred" data-copy="${escapeAttr(r.value)}" title="点击复制${r.label}">
+      <span class="pcred-l">${r.label}</span>
+      <span class="pcred-v">${escapeHtml(r.masked ? '••••••' : r.value)}</span>
+    </div>`;
+  }).join('') || '';
+}
+
+// 个人信息行（popup 精简版）
+function renderPersonalInfoRows(n) {
+  return [
+    { label: '姓名', value: n.name || '' },
+    { label: '电话', value: n.phone || '' },
+    { label: '邮箱', value: n.email || '' },
+    { label: '身份证号', value: n.idCard || '', masked: true },
+    ...(Array.isArray(n.fields) ? n.fields.map(f => ({ label: f.label || '自定义', value: f.value || '' })) : []),
+  ].filter(r => r.value).map(r => {
+    return `<div class="pcred" data-copy="${escapeAttr(r.value)}" title="点击复制${r.label}">
+      <span class="pcred-l">${escapeHtml(r.label)}</span>
+      <span class="pcred-v">${escapeHtml(r.masked ? '••••••••••••' : r.value)}</span>
+    </div>`;
+  }).join('');
+}
+
 // 按类别生成复制文本（与 sidepanel 一致）
 function buildCopyText(n) {
   switch (n.category) {
@@ -200,6 +235,18 @@ function buildCopyText(n) {
       return [n.title, ...(Array.isArray(n.tasks) ? n.tasks.map(t => `${t.done ? '[x]' : '[ ]'} ${t.text}`) : []), n.content].filter(Boolean).join('\n');
     case 'flash':
       return n.content || n.title;
+    case 'ssh_config':
+      return [n.host && `Host: ${n.host}`, n.port && `Port: ${n.port}`, n.username && `User: ${n.username}`, n.password && `Password: ${n.password}`, n.content].filter(Boolean).join('\n');
+    case 'personal_info': {
+      const custom = (Array.isArray(n.fields) ? n.fields : []).filter(f => f.label || f.value).map(f => `${f.label}: ${f.value}`);
+      return [
+        n.name && `姓名: ${n.name}`,
+        n.phone && `电话: ${n.phone}`,
+        n.email && `邮箱: ${n.email}`,
+        n.idCard && `身份证号: ${n.idCard}`,
+        ...custom,
+      ].filter(Boolean).join('\n');
+    }
     default: {
       const blocks = Array.isArray(n.blocks) && n.blocks.length ? n.blocks : (n.content ? [{ text: n.content }] : []);
       return [n.title, ...blocks.map((b, i) => `${i + 1}. ${b.text}`)].filter(Boolean).join('\n');

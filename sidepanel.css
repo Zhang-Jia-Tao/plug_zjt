@@ -270,6 +270,16 @@ body {
 .block-edit-row .block-del:hover { background: #f0ede2; color: var(--danger); }
 .block-add-btn { margin-top: 6px; align-self: flex-start; font-size: 12px; }
 
+/* 个人信息自定义标签编辑器 */
+.pi-edit-row { display: flex; gap: 6px; align-items: center; }
+.pi-edit-row .pi-label { flex: 0 0 110px; }
+.pi-edit-row .pi-value { flex: 1; }
+.pi-edit-row .pi-del {
+  border: none; background: transparent; color: var(--muted);
+  cursor: pointer; font-size: 14px; padding: 4px 6px; border-radius: 4px; flex-shrink: 0;
+}
+.pi-edit-row .pi-del:hover { background: #f0ede2; color: var(--danger); }
+
 /* 卡片：多内容块展示 */
 .block-item {
   display: flex; gap: 7px; margin: 5px 0; align-items: flex-start;
@@ -321,9 +331,10 @@ body {
 .cred-row:hover { background: #f0ede2; }
 .cred-row.copied { background: #e3f2e4; outline: 1px solid #2e7d32; }
 .cred-label {
-  width: 32px;
-  color: var(--muted);
+  min-width: 32px;
+  width: auto;
   flex-shrink: 0;
+  color: var(--muted);
 }
 .cred-val {
   flex: 1;

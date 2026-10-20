@@ -63,6 +63,37 @@
           <button type="button" id="btn-genpwd" class="btn-ghost" title="生成随机密码">🎲</button>
         </div>
       </label>
+      <label class="field" id="field-ssh-host">
+        <span>Host</span>
+        <input id="f-ssh-host" type="text" placeholder="主机地址，例如 10.19.214.7" />
+      </label>
+      <label class="field" id="field-ssh-port">
+        <span>Port</span>
+        <input id="f-ssh-port" type="text" placeholder="端口，例如 55555" />
+      </label>
+      <label class="field" id="field-pi-name">
+        <span>姓名</span>
+        <input id="f-pi-name" type="text" placeholder="姓名" />
+      </label>
+      <label class="field" id="field-pi-phone">
+        <span>电话</span>
+        <input id="f-pi-phone" type="text" placeholder="电话号码" />
+      </label>
+      <label class="field" id="field-pi-email">
+        <span>邮箱</span>
+        <input id="f-pi-email" type="text" placeholder="邮箱地址" />
+      </label>
+      <label class="field" id="field-pi-idcard">
+        <span>身份证号</span>
+        <input id="f-pi-idcard" type="text" placeholder="身份证号" />
+      </label>
+      <div class="field" id="field-pi-custom">
+        <span>自定义标签</span>
+        <div id="pi-field-editor" class="task-editor">
+          <!-- 自定义标签行由 JS 注入 -->
+        </div>
+        <button type="button" id="btn-add-pi-field" class="btn btn-ghost task-add-btn">+ 添加自定义标签</button>
+      </div>
       <label class="field" id="field-url">
         <span>链接</span>
         <input id="f-url" type="text" placeholder="https://…" />

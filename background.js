@@ -153,6 +153,8 @@ async function handleMessage(msg, sender) {
         pinned: localMap[n.id]?.pinned ?? n.pinned,
         tasks: localMap[n.id]?.tasks ?? n.tasks ?? [], // 保留本地任务清单（Notion 无此字段）
         blocks: localMap[n.id]?.blocks ?? n.blocks ?? [], // 保留本地多内容块（Notion 无此字段）
+        // 自定义标签：Notion 有 CustomFields 列则用云端值，为空则保留本地
+        fields: (Array.isArray(n.fields) && n.fields.length) ? n.fields : (localMap[n.id]?.fields ?? []),
       }));
       await replaceAllNotes(merged);
       await setSettings({ notionLastSync: new Date().toISOString() });
@@ -180,6 +182,14 @@ async function handleMessage(msg, sender) {
           `> 创建: ${n.createdAt} | 更新: ${n.updatedAt}${n.pinned ? ' | ⭐置顶' : ''}`,
           '',
           n.url ? `**链接**: ${n.url}\n` : '',
+          n.host ? `**SSH Host**: ${n.host}${n.port ? `:${n.port}` : ''}\n` : '',
+          n.name || n.phone || n.email || n.idCard ? [
+            n.name ? `**姓名**: ${n.name}` : '',
+            n.phone ? `**电话**: ${n.phone}` : '',
+            n.email ? `**邮箱**: ${n.email}` : '',
+            n.idCard ? `**身份证号**: ${n.idCard}` : '',
+          ].filter(Boolean).join('\n') + '\n' : '',
+          Array.isArray(n.fields) && n.fields.length ? '## 自定义标签\n' + n.fields.map(f => `- **${f.label || ''}**: ${f.value || ''}`).join('\n') + '\n' : '',
           n.remindAt ? `**提醒**: ${n.remindAt}\n` : '',
           n.content || '',
           '',
