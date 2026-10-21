@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>星野智能生活 · 04 门店店员</title>
+<style>
+  :root {
+    --paper: #211810;
+    --paper-2: #2c2015;
+    --ink: #f5f0e4;
+    --soft: #c4b8a5;
+    --accent: #e8912d;
+    --accent-deep: #a55f14;
+    --accent-dim: rgba(232, 145, 45, 0.16);
+    --line: rgba(245, 240, 228, 0.16);
+    --serif: "KaiTi", "STKaiti", "Kaiti SC", serif;
+    --mono: "Consolas", "JetBrains Mono", monospace;
+    --sans: "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #171009; font-family: var(--sans); display: flex; justify-content: center; padding: 0; }
+  .poster {
+    width: 750px; position: relative; overflow: hidden;
+    background:
+      radial-gradient(circle at 82% 6%, rgba(232, 145, 45, 0.24), transparent 45%),
+      radial-gradient(circle at 8% 62%, rgba(255, 220, 160, 0.10), transparent 50%),
+      linear-gradient(175deg, var(--paper) 0%, var(--paper-2) 100%);
+    color: var(--ink);
+  }
+  .grain { position: absolute; inset: 0; opacity: 0.55; pointer-events: none; z-index: 9; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.18'/%3E%3C/svg%3E"); }
+  .rail {
+    position: absolute; right: 22px; top: 460px; z-index: 5;
+    writing-mode: vertical-rl; letter-spacing: 10px;
+    font-family: var(--serif); font-size: 15px; color: rgba(245, 240, 228, 0.4);
+  }
+  .inner { position: relative; padding: 0 60px; z-index: 2; }
+
+  .masthead { display: flex; align-items: flex-start; justify-content: space-between; padding-top: 52px; }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .logo {
+    width: 56px; height: 56px; border-radius: 2px;
+    background: var(--ink); color: #211810;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--serif); font-size: 30px; font-weight: 700;
+  }
+  .brand-name { font-size: 23px; font-weight: 800; letter-spacing: 3px; }
+  .brand-slogan { font-family: var(--serif); font-size: 13px; color: var(--soft); letter-spacing: 5px; margin-top: 5px; }
+  .series { text-align: right; font-family: var(--mono); font-size: 11px; color: var(--soft); letter-spacing: 2px; line-height: 1.9; }
+  .series b { color: var(--accent); font-size: 13px; }
+
+  .eyebrow { margin-top: 66px; display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; letter-spacing: 4px; color: var(--soft); }
+  .eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .eyebrow .no { color: var(--accent); font-weight: 700; }
+
+  .hero { position: relative; margin-top: 14px; }
+  .ghost {
+    position: absolute; right: -10px; top: -74px; z-index: 0;
+    font-family: var(--mono); font-size: 300px; font-weight: 700; line-height: 1;
+    color: transparent; -webkit-text-stroke: 1px rgba(245, 240, 228, 0.10);
+    letter-spacing: -14px; user-select: none;
+  }
+  .hero h1 {
+    position: relative; z-index: 1;
+    font-size: 118px; font-weight: 900; letter-spacing: 6px; line-height: 1.02;
+    text-shadow: 0 10px 50px rgba(0, 0, 0, 0.45);
+  }
+  .hero h1 .accent-char {
+    font-family: var(--serif); font-weight: 700; color: var(--accent);
+    position: relative; display: inline-block; margin-left: 6px;
+  }
+  .accent-char svg { position: absolute; left: -10px; top: -14px; width: calc(100% + 20px); height: calc(100% + 30px); }
+  .hero .lede {
+    position: relative; z-index: 1; margin-top: 26px;
+    font-family: var(--serif); font-size: 25px; line-height: 1.75; color: var(--ink); max-width: 560px;
+  }
+  .lede .mark {
+    background: linear-gradient(transparent 62%, var(--accent-dim) 62%, var(--accent-dim) 94%, transparent 94%);
+    padding: 0 2px;
+  }
+
+  .salary-tag {
+    display: inline-flex; align-items: baseline; gap: 14px;
+    margin-top: 34px; transform: rotate(-1.6deg);
+    background: var(--ink); color: #211810;
+    padding: 16px 26px; border-radius: 4px;
+    box-shadow: 4px 6px 0 rgba(232, 145, 45, 0.4), 0 12px 30px rgba(0, 0, 0, 0.4);
+  }
+  .salary-tag .amount { font-family: var(--mono); font-size: 34px; font-weight: 700; letter-spacing: -1px; }
+  .salary-tag .unit { font-size: 13px; font-weight: 600; color: #6b5a3e; letter-spacing: 1px; }
+
+  .facts { margin-top: 44px; border-top: 1px solid var(--line); }
+  .fact { display: flex; align-items: baseline; padding: 15px 0; border-bottom: 1px solid var(--line); }
+  .fact dt { width: 120px; flex: none; font-family: var(--serif); font-size: 16px; color: var(--soft); letter-spacing: 4px; }
+  .fact dd { font-size: 18px; font-weight: 600; letter-spacing: 1px; }
+  .fact dd small { font-size: 13px; color: var(--soft); font-weight: 400; margin-left: 10px; letter-spacing: 0; }
+  .fact dd .hl { color: var(--accent); }
+
+  .section { margin-top: 56px; }
+  .sec-head { display: flex; align-items: baseline; gap: 18px; margin-bottom: 22px; }
+  .sec-no { font-family: var(--mono); font-size: 52px; font-weight: 700; line-height: 1; color: transparent; -webkit-text-stroke: 1.2px var(--accent); }
+  .sec-title { font-size: 27px; font-weight: 800; letter-spacing: 3px; }
+  .sec-en { font-family: var(--mono); font-size: 10px; color: var(--soft); letter-spacing: 3px; margin-left: auto; }
+
+  .duty { display: flex; gap: 20px; padding: 17px 0; border-bottom: 1px dashed var(--line); align-items: baseline; }
+  .duty:first-child { border-top: 1px dashed var(--line); }
+  .duty .idx { font-family: var(--mono); font-size: 13px; color: var(--accent); flex: none; width: 30px; }
+  .duty p { font-size: 17.5px; line-height: 1.65; color: var(--soft); }
+  .duty p b { color: var(--ink); font-weight: 700; }
+
+  .perks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .perk { border: 1px solid var(--line); border-radius: 4px; padding: 20px 22px; position: relative; background: rgba(255, 255, 255, 0.02); }
+  .perk.wide { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; background: var(--accent-dim); border-color: rgba(232, 145, 45, 0.35); }
+  .p-ic { width: 40px; height: 40px; flex: none; border-radius: 50%; border: 1.2px solid var(--accent); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+  .p-ic svg { width: 19px; height: 19px; }
+  .perk b { display: block; font-size: 18px; margin-bottom: 6px; letter-spacing: 1px; }
+  .perk span { font-size: 14.5px; line-height: 1.6; color: var(--soft); }
+  .perk.wide b { margin-bottom: 0; font-size: 19px; }
+  .perk.wide span { display: inline; }
+  .perk.wide .pw-text { flex: 1; }
+
+  .ticker { margin-top: 56px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 18px 0; display: flex; justify-content: space-between; }
+  .ticker div { text-align: center; flex: 1; position: relative; }
+  .ticker div + div::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 1px; background: var(--line); }
+  .ticker b { display: block; font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--ink); }
+  .ticker b i { font-style: normal; color: var(--accent); }
+  .ticker span { font-size: 12px; color: var(--soft); letter-spacing: 2px; margin-top: 6px; display: block; }
+
+  .stub { margin-top: 52px; margin-bottom: 0; position: relative; }
+  .stub-inner {
+    margin: 0 60px;
+    background: var(--ink); color: #241b10; border-radius: 6px 6px 0 0;
+    padding: 30px 34px 26px; display: flex; gap: 28px; align-items: center;
+    position: relative;
+  }
+  .stub-inner::before {
+    content: ""; position: absolute; top: -7px; left: 0; right: 0; height: 8px;
+    background-image: radial-gradient(circle at 4px 0, transparent 4px, var(--ink) 4px);
+    background-size: 18px 8px; background-repeat: repeat-x;
+  }
+  .stub-qr { width: 132px; height: 132px; flex: none; background: #fff; border: 1.5px solid #241b10; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; color: #241b10; text-align: center; line-height: 1.5; }
+  .stub-main { flex: 1; }
+  .stub-main h3 { font-size: 22px; font-weight: 900; letter-spacing: 2px; }
+  .stub-main h3 em { font-style: normal; font-family: var(--serif); color: var(--accent-deep); }
+  .stub-main p { font-size: 14.5px; line-height: 1.9; color: #4d4130; margin-top: 9px; }
+  .stub-main p b { font-family: var(--mono); font-weight: 700; }
+  .stub-foot { border-top: 1px dashed rgba(36, 27, 16, 0.4); margin-top: 16px; padding-top: 13px; font-size: 12px; color: #7d7159; letter-spacing: 0.5px; }
+  .stamp { position: absolute; right: 26px; top: 22px; transform: rotate(9deg); opacity: 0.9; }
+  .stamp text { font-family: var(--mono); }
+  .colophon {
+    background: #171009; padding: 20px 60px 26px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 11px; color: rgba(245, 240, 228, 0.35); letter-spacing: 2px;
+  }
+  .colophon .dot { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="poster">
+  <div class="grain"></div>
+  <div class="rail">星野智能生活 · 二〇二七扩张计划</div>
+  <div class="inner">
+
+    <header class="masthead">
+      <div class="brand">
+        <div class="logo">星</div>
+        <div>
+          <div class="brand-name">星野智能生活</div>
+          <div class="brand-slogan">好用 · 好看 · 不冰冷</div>
+        </div>
+      </div>
+      <div class="series">XINGYE SMART LIFE<br><b>WE'RE HIRING · 2027</b></div>
+    </header>
+
+    <div class="eyebrow">POSITION <span class="no">No.04</span></div>
+
+    <div class="hero">
+      <div class="ghost">04</div>
+      <h1>门店<span class="accent-char">店<svg viewBox="0 0 100 100" fill="none" preserveAspectRatio="none"><path d="M12,52 C8,22 38,8 62,10 C92,12 98,42 94,66 C90,90 58,96 34,92 C10,88 4,72 8,54" stroke="#e8912d" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/></svg></span>员</h1>
+      <p class="lede">在第一家线下门店里，你就是顾客见到的<span class="mark">「星野」</span>——一句「欢迎来体验」，开启一整个智能的家。</p>
+      <div class="salary-tag">
+        <span class="amount">3,500–5,000</span>
+        <span class="unit">元/月<br>底薪 + 销售提成</span>
+      </div>
+    </div>
+
+    <dl class="facts">
+      <div class="fact"><dt>招聘人数</dt><dd>6 人<small>4 家新店同开 · 起步即元老</small></dd></div>
+      <div class="fact"><dt>工作地点</dt><dd>杭州<small>各「星野智能生活馆」新店</small></dd></div>
+      <div class="fact"><dt>工作时间</dt><dd>排班制 <span class="hl">· 班次灵活</span><small>门店营业时间排班</small></dd></div>
+      <div class="fact"><dt>适合的人</dt><dd>18–35 岁 · 亲和力强 · 爱交流</dd></div>
+    </dl>
+
+    <section class="section">
+      <div class="sec-head">
+        <span class="sec-no">01</span>
+        <h2 class="sec-title">你要做的事</h2>
+        <span class="sec-en">WHAT YOU'LL DO</span>
+      </div>
+      <div>
+        <div class="duty"><span class="idx">A.</span><p><b>迎宾接待</b>——热情接待到店顾客，介绍品牌与智能生活场景</p></div>
+        <div class="duty"><span class="idx">B.</span><p><b>产品演示</b>——现场演示智能灯光、扫地机器人等产品的真实使用效果</p></div>
+        <div class="duty"><span class="idx">C.</span><p><b>销售转化</b>——了解需求、推荐组合方案，完成销售并引导线上复购</p></div>
+        <div class="duty"><span class="idx">D.</span><p><b>门店维护</b>——参与陈列布置与体验区维护，让门店始终「好看、不冰冷」</p></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="sec-head">
+        <span class="sec-no">02</span>
+        <h2 class="sec-title">我们希望你是</h2>
+        <span class="sec-en">WHO YOU ARE</span>
+      </div>
+      <div>
+        <div class="duty"><span class="idx">A.</span><p><b>亲和力强、爱交流</b>——笑容真诚，和谁都能聊两句</p></div>
+        <div class="duty"><span class="idx">B.</span><p>对智能产品和生活场景有兴趣，愿意动手体验每一件新品</p></div>
+        <div class="duty"><span class="idx">C.</span><p>能接受门店排班（含周末班）；有零售经验、智能家居发烧友优先</p></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="sec-head">
+        <span class="sec-no">03</span>
+        <h2 class="sec-title">你能得到什么</h2>
+        <span class="sec-en">WHAT YOU GET</span>
+      </div>
+      <div class="perks">
+        <div class="perk wide">
+          <span class="p-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12M6 8h12M6 8c0 4 2.5 6 6 6s6-2 6-6"/><path d="M12 14v4M9 21h6"/></svg></span>
+          <div class="pw-text"><b>卖得好，赚得多</b><span>底薪 + 销售提成，收入跟着业绩走</span></div>
+        </div>
+        <div class="perk">
+          <div class="p-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1-5h16l1 5"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/><path d="M3 9c1.5 1.5 3 1.5 4.5 0s3-1.5 4.5 0 3 1.5 4.5 0 3-1.5 4.5 0"/></svg></div>
+          <b>元老店员</b><span>新店起步即入职，4 店扩张期晋升店长的机会就在眼前</span>
+        </div>
+        <div class="perk">
+          <div class="p-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+          <b>五险一金</b><span>入职即缴，节日福利、生日关怀一个不少</span>
+        </div>
+        <div class="perk wide">
+          <span class="p-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 9v12h14V9"/><path d="M9 21v-6h6v6"/></svg></span>
+          <div class="pw-text"><b>近水楼台</b><span>智能家居新品内部体验价，家里先智能起来</span></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="ticker">
+      <div><b>2019</b><span>品牌成立</span></div>
+      <div><b>6400<i>万</i></b><span>2026 销售额</span></div>
+      <div><b>1<i>亿</i></b><span>2027 目标</span></div>
+      <div><b>4<i>店</i></b><span>新开智能生活馆</span></div>
+    </div>
+
+    <footer class="stub">
+      <div class="stub-inner">
+        <div class="stub-qr">扫码投递<br>简历</div>
+        <div class="stub-main">
+          <h3>简历投递 <em>· 现在就绪</em></h3>
+          <p>邮箱 <b>hr@xingye-smart.com</b>　邮件标题：姓名 + 应聘门店店员<br>电话 <b>0571-8888-XXXX</b>　工作日 9:00–18:00</p>
+          <div class="stub-foot">主播 · 直播运营 · 电商客服 · 门店店员 四岗同步招聘中，详情关注公众号「星野智能生活」</div>
+        </div>
+        <svg class="stamp" width="96" height="96" viewBox="0 0 96 96">
+          <circle cx="48" cy="48" r="45" fill="none" stroke="#a55f14" stroke-width="2"/>
+          <circle cx="48" cy="48" r="31" fill="none" stroke="#a55f14" stroke-width="1"/>
+          <text x="48" y="24" text-anchor="middle" font-size="8" fill="#a55f14" letter-spacing="3">XINGYE 2027</text>
+          <text x="48" y="57" text-anchor="middle" font-size="15" font-weight="bold" fill="#a55f14" letter-spacing="4">急聘</text>
+          <text x="48" y="76" text-anchor="middle" font-size="7" fill="#a55f14" letter-spacing="2">HOT HIRING</text>
+        </svg>
+      </div>
+      <div class="colophon">
+        <span>XINGYE SMART LIFE CO.</span>
+        <span class="dot">◆</span>
+        <span>RECRUITMENT SERIES 04 / 04</span>
+      </div>
+    </footer>
+
+  </div>
+</div>
+</body>
+</html>

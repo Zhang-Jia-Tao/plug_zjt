@@ -1,0 +1,89 @@
+/* content.css — 注入到网页：左侧悬浮把手 + 目录树侧边栏容器 */
+
+.nt-tree-handle {
+  position: fixed;
+  left: 0;
+  top: 40%;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px 10px 7px;
+  border-radius: 0 14px 14px 0;
+  background: linear-gradient(135deg, #6d5efc, #4285f4);
+  color: #fff;
+  font-size: 14px;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.25);
+  writing-mode: vertical-rl;
+  letter-spacing: 2px;
+  transition: transform 0.25s ease, opacity 0.25s ease, left 0.25s ease;
+}
+.nt-tree-handle .nt-tree-handle-label { font-size: 12px; font-weight: 600; }
+.nt-tree-handle:hover { transform: translateX(4px); }
+.nt-tree-handle.docked { left: -22px; opacity: 0.75; }
+.nt-tree-handle.docked:hover { left: 0; opacity: 1; }
+.nt-tree-handle.dragging { transition: none; cursor: ns-resize; }
+
+/* 侧边栏容器 */
+.nt-tree-wrap {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: var(--nt-tree-w, 300px);
+  z-index: 2147483000;
+  pointer-events: none;
+}
+.nt-tree-wrap .nt-tree-sidebar {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  height: 100%;
+  width: calc(100% + 4px);
+  background: #1e2129;
+  border-right: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
+  transform: translateX(-100%);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  pointer-events: auto;
+}
+.nt-tree-wrap.open .nt-tree-sidebar { transform: translateX(0); }
+.nt-tree-wrap .nt-tree-sidebar iframe {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #1e2129;
+}
+/* 宽度拖拽把手 */
+.nt-tree-wrap .nt-tree-grab {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 2;
+}
+.nt-tree-wrap .nt-tree-grab:hover { background: rgba(138, 180, 248, 0.3); }
+/* 收起按钮 */
+.nt-tree-wrap .nt-tree-close {
+  position: absolute;
+  top: 50%;
+  right: -30px;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 48px;
+  border: none;
+  border-radius: 0 10px 10px 0;
+  background: #1e2129;
+  color: #9aa0a6;
+  font-size: 15px;
+  cursor: pointer;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+}
+.nt-tree-wrap .nt-tree-close:hover { color: #8ab4f8; }

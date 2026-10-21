@@ -1,0 +1,237 @@
+/* tree.css — 目录树侧边栏（tree.html iframe 内）+ file-picker 页 */
+
+/* ---- tree.html 主体 ---- */
+.tree-body {
+  height: 100vh;
+  overflow: hidden;
+  display: block;
+  margin: 0;
+}
+.tree-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* 头部 */
+.tree-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+.tree-title { font-size: 13px; font-weight: 600; letter-spacing: 0.3px; }
+.tree-head-actions { display: flex; gap: 6px; }
+.tree-icon-btn {
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  color: var(--text);
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.tree-icon-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* 树列表 */
+.tree-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 8px 12px;
+}
+.tree-empty {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 28px 10px;
+  line-height: 1.8;
+}
+
+/* 行 */
+.tree-dir-root { margin-bottom: 4px; }
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+  user-select: none;
+}
+.tree-row:hover { background: var(--card-hover); }
+.tree-row.selected {
+  background: var(--primary);
+  color: #fff;
+}
+.tree-row.selected .tree-size,
+.tree-row.selected .tree-copy-btn { color: #fff; }
+.tree-row.dir-root { font-weight: 600; }
+.tree-row.file { cursor: default; }
+.tree-caret {
+  width: 12px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.tree-icon { flex-shrink: 0; font-size: 13px; }
+.tree-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-size { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+.tree-copy-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tree-row:hover .tree-copy-btn { display: flex; }
+.tree-copy-btn:hover { color: var(--primary); background: var(--card-hover); }
+.tree-row.selected .tree-copy-btn:hover { color: #fff; }
+.tree-row-del {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tree-row:hover .tree-row-del { display: flex; }
+.tree-row-del:hover { color: var(--danger); background: var(--card-hover); }
+/* 新建子目录按钮（目录行 hover 出现） */
+.tree-mkdir-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tree-row:hover .tree-mkdir-btn { display: flex; }
+.tree-mkdir-btn:hover { color: var(--primary); background: var(--card-hover); }
+/* 新建目录的行内输入行 */
+.tree-row.mkdir-row {
+  cursor: default;
+  background: var(--card-hover);
+  animation: mkdir-in 0.15s ease-out;
+}
+@keyframes mkdir-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.tree-mkdir-input {
+  flex: 1;
+  border: 1px solid var(--primary);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  outline: none;
+  min-width: 0;
+}
+
+/* 子级缩进 */
+.tree-children { margin-left: 16px; }
+
+/* 底部粘贴按钮 */
+.tree-foot {
+  padding: 10px 14px;
+  border-top: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+.tree-foot-btn {
+  width: 100%;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.tree-foot-btn:hover { background: var(--card-hover); border-color: var(--primary); }
+
+/* Toast */
+.tree-toast {
+  position: fixed;
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--primary);
+  color: #fff;
+  border-radius: 18px;
+  padding: 7px 16px;
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  z-index: 50;
+  white-space: nowrap;
+}
+.tree-toast.error { background: var(--danger); }
+
+/* ---- file-picker 页 ---- */
+.picker-body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  gap: 14px;
+  padding: 0 24px;
+  text-align: center;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  background: #1e2129;
+  color: #e8eaed;
+}
+.picker-body #picker-tip { color: #9aa0a6; line-height: 1.6; }
+.picker-btn {
+  border: none;
+  background: linear-gradient(135deg, #6d5efc, #4285f4);
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 28px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.picker-btn:hover { transform: translateY(-1px); }
+.picker-btn:disabled { opacity: 0.6; cursor: default; }
+.picker-body .picker-result { color: #8ab4f8; min-height: 18px; }

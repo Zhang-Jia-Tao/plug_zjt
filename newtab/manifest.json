@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "可定制新标签页",
+  "version": "1.1.0",
+  "description": "自由设计与编排新标签页小组件：时间、日历、便利贴任务等，支持拖拽布局与本地目录树",
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "permissions": ["storage", "topSites", "bookmarks", "offscreen", "clipboardRead", "clipboardWrite", "downloads", "scripting", "tabs"],
+  "optional_host_permissions": ["<all_urls>"],
+  "host_permissions": ["file://*/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "toggle-tree": {
+      "suggested_key": { "default": "Ctrl+Shift+E" },
+      "description": "显示/隐藏本地目录树侧边栏"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["tree.html"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

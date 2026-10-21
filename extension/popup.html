@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>便利贴</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="phead">
+    <span class="logo">📌 程序员便利贴</span>
+    <button id="btn-panel" class="btn-ghost" title="打开侧边栏">⇱ 侧边栏</button>
+  </header>
+  <div class="ptabs" id="ptabs">
+    <div class="ptab active" data-cat="all">全部</div>
+    <div class="ptab" data-cat="reminder">⏰ 提醒</div>
+    <div class="ptab" data-cat="meeting">📅 会议</div>
+    <div class="ptab" data-cat="bug">🐞 BUG</div>
+  </div>
+  <main id="plist" class="plist"></main>
+  <footer class="pfoot">
+    <button id="btn-new" class="btn-primary">+ 新建</button>
+    <button id="btn-options" class="btn-ghost">⚙</button>
+  </footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>新标签页</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/widgets.css" />
+  <link rel="stylesheet" href="css/settings.css" />
+</head>
+<body>
+  <!-- 顶部书签栏：仿谷歌首页「收藏的网址」一行，点击当前标签跳转 -->
+  <div id="bm-bar" class="bm-bar">
+    <div id="bm-bar-list" class="bm-bar-list">
+      <!-- 书签由 JS 渲染 -->
+    </div>
+    <button id="bm-more" class="bm-more hidden" title="更多书签">»</button>
+  </div>
+
+  <!-- 本地目录树侧边栏（全屏 iframe，同 tree.html 逻辑） -->
+  <aside id="tree-sidebar" class="nt-tree-sidebar-page hidden">
+    <iframe id="tree-frame" src="tree.html" frameborder="0"></iframe>
+    <button id="tree-toggle" class="tree-toggle-btn" title="收起目录树">‹</button>
+  </aside>
+  <button id="tree-handle" class="tree-handle-btn" title="本地目录树">📁<span>目录</span></button>
+
+  <!-- 右上角工具条 -->
+  <div class="toolbar">
+    <button id="btn-edit" class="tool-btn" title="编辑布局">✏</button>
+    <button id="btn-settings" class="tool-btn" title="设置">⚙</button>
+  </div>
+
+  <!-- 小组件网格 -->
+  <main id="grid" class="grid">
+    <!-- widget 卡片由 JS 注入 -->
+  </main>
+
+  <!-- 编辑模式提示条 -->
+  <div id="edit-hint" class="edit-hint hidden">
+    编辑模式：拖拽卡片换位 · 点 ⟳ 切换尺寸 · 点 ✕ 删除 ·
+    <button id="btn-edit-done" class="link-btn">完成</button>
+  </div>
+
+  <!-- 设置面板（覆盖层） -->
+  <div id="settings" class="settings hidden">
+    <div class="settings-card">
+      <div class="settings-head">
+        <span>设置</span>
+        <button id="settings-close" class="tool-btn" title="关闭">✕</button>
+      </div>
+
+      <div class="settings-section">
+        <h4>外观</h4>
+        <label class="settings-row">
+          <span>主题</span>
+          <select id="s-theme">
+            <option value="dark">深色</option>
+            <option value="light">浅色</option>
+          </select>
+        </label>
+        <label class="settings-row">
+          <span>背景色</span>
+          <select id="s-bg-color">
+            <option value="default">默认（跟随主题）</option>
+            <option value="#1a1d24">深空灰</option>
+            <option value="#0f2027">深海蓝</option>
+            <option value="#2d1b3d">暗夜紫</option>
+            <option value="#1d2b1f">森林绿</option>
+            <option value="#f2f4f8">云白</option>
+            <option value="#fdf6ec">米纸色</option>
+            <option value="#e8f0fe">淡天蓝</option>
+            <option value="custom">自定义…</option>
+          </select>
+        </label>
+        <label class="settings-row">
+          <span>自定义颜色</span>
+          <input id="s-bg-custom" type="color" value="#1e2129" />
+        </label>
+      </div>
+
+      <div class="settings-section">
+        <h4>添加小组件</h4>
+        <div id="widget-add-list" class="widget-add-list">
+          <!-- 由 JS 注入：registry 中各 widget 的添加按钮 -->
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h4>小组件配置</h4>
+        <div id="widget-config-list" class="widget-config-list">
+          <!-- 由 JS 注入：每个已有 widget 实例的配置表单 -->
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h4>便利贴联动</h4>
+        <label class="settings-row">
+          <span>便利贴扩展 ID</span>
+          <input id="s-sticky-ext-id" type="text" placeholder="chrome://extensions 中查看" />
+        </label>
+        <p class="settings-tip">填写「程序员便利贴」扩展的 ID 后，任务小组件可读取并勾选便利贴的规划清单。</p>
+      </div>
+
+      <div class="settings-section">
+        <button id="btn-reset" class="btn btn-danger">恢复默认布局</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

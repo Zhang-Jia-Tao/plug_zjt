@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>本地目录</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/tree.css" />
+</head>
+<body class="tree-body">
+  <div class="tree-root">
+    <div class="tree-head">
+      <span class="tree-title">📁 本地目录</span>
+      <div class="tree-head-actions">
+        <button id="btn-add-dir" class="tree-icon-btn" title="添加目录">＋</button>
+        <button id="btn-refresh" class="tree-icon-btn" title="刷新">⟳</button>
+      </div>
+    </div>
+    <div id="tree-list" class="tree-list">
+      <!-- 目录树由 JS 渲染 -->
+    </div>
+    <div class="tree-foot">
+      <button id="btn-paste" class="tree-foot-btn" title="把剪贴板内容粘贴为文件">📥 粘贴为文件</button>
+    </div>
+  </div>
+  <div id="tree-toast" class="tree-toast hidden"></div>
+  <script type="module" src="js/tree.js"></script>
+</body>
+</html>
