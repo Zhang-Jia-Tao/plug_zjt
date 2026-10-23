@@ -1,0 +1,9 @@
+{
+    "name":  "ai_manager_host",
+    "description":  "Local AI app manager host",
+    "path":  "C:/Users/zhangjiatao6/IdeaProjects/plug_zjt/ai_manager_host/run-host.bat",
+    "type":  "stdio",
+    "allowed_origins":  [
+                            "chrome-extension://lpgfnalhjbfdccdgmmhmaacfbmhiaiff/"
+                        ]
+}
