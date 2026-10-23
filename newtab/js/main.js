@@ -5,6 +5,7 @@ import { loadState, saveState, patchWidgetData, setWidgetSize, reorderWidgets, a
 import { renderGrid } from './grid.js';
 import { WIDGETS } from './widgets/registry.js';
 import { initBookmarkBar } from './bookmarksbar.js';
+import { initAiManager } from './aimanager.js';
 
 let state = null;
 
@@ -255,6 +256,7 @@ async function init() {
   bindSettings();
   bindTreeSidebar();
   initBookmarkBar();
+  initAiManager();
 }
 
 init();

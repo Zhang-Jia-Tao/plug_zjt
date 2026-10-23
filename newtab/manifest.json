@@ -6,7 +6,7 @@
   "chrome_url_overrides": {
     "newtab": "index.html"
   },
-  "permissions": ["storage", "topSites", "bookmarks", "offscreen", "clipboardRead", "clipboardWrite", "downloads", "scripting", "tabs"],
+  "permissions": ["storage", "topSites", "bookmarks", "offscreen", "clipboardRead", "clipboardWrite", "downloads", "scripting", "tabs", "nativeMessaging", "favicon"],
   "optional_host_permissions": ["<all_urls>"],
   "host_permissions": ["file://*/*"],
   "background": {

@@ -2,14 +2,83 @@
 // 目录树功能中枢：目录句柄 IndexedDB 持久化、目录扫描、文件读/写、剪贴板代理。
 // 页面（newtab / tree iframe / content script）全部经 chrome.runtime.sendMessage
 // 走这里，句柄只在 SW 作用域流转，权限只需授予一次。
+// 另含 AI 管理器 Native Messaging 端口：connectNative('ai_manager_host')
+// 长连接收 host 推送（apps/message/dialog），页面订阅经 ai:subscribe 广播。
 
 import { listDirHandles, removeDirHandle } from './js/handle-store.js';
 import { scanDirectory, readFile, writeFile, createDirectory } from './js/fs-access.js';
+
+// ---- AI 管理器：Native Messaging 端口 ----
+// 页面侧用 chrome.runtime.connect({ name: 'ai:subscribe' }) 建立到 SW 的长连接；
+// SW 把 host 推送的事件广播到所有订阅连接。
+let aiPort = null;
+const aiSubscribers = new Set(); // 页面 port（onDisconnect 自动摘除）
+
+chrome.runtime.onConnect.addListener((pagePort) => {
+  if (pagePort.name !== 'ai:subscribe') return;
+  aiSubscribers.add(pagePort);
+  pagePort.onDisconnect.addListener(() => aiSubscribers.delete(pagePort));
+  // 新订阅者：确保 host 连接活着，并立即请求一份快照
+  const port = ensureAiPort();
+  if (port) port.postMessage({ type: 'query' });
+  else pagePort.postMessage({ action: 'ai:event', payload: { type: 'host:error', message: 'host 未连接（是否已运行 install-host.bat？）' } });
+});
+
+function ensureAiPort() {
+  if (aiPort) return aiPort;
+  try {
+    aiPort = chrome.runtime.connectNative('ai_manager_host');
+  } catch (e) {
+    broadcastAi({ type: 'host:error', message: String(e && e.message || e) });
+    return null;
+  }
+  aiPort.onMessage.addListener((msg) => broadcastAi(msg));
+  aiPort.onDisconnect.addListener(() => {
+    const err = chrome.runtime.lastError;
+    aiPort = null;
+    broadcastAi({ type: 'host:error', message: (err && err.message) || 'host 断开（未安装或已退出）' });
+    // 10s 后自动重连（host 可能刚被安装）
+    setTimeout(ensureAiPort, 10000);
+  });
+  return aiPort;
+}
+
+function broadcastAi(msg) {
+  for (const sub of aiSubscribers) {
+    try { sub.postMessage({ action: 'ai:event', payload: msg }); } catch { /* 页面已关 */ }
+  }
+}
+
+function handleAiMessage(msg, sender, sendResponse) {
+  switch (msg.action) {
+    case 'ai:query': {
+      const port = ensureAiPort();
+      if (!port) { sendResponse({ ok: false, message: 'host 未连接' }); break; }
+      port.postMessage({ type: 'query' });
+      sendResponse({ ok: true });
+      break;
+    }
+    case 'ai:respond': {
+      const port = ensureAiPort();
+      if (!port) { sendResponse({ ok: false, message: 'host 未连接' }); break; }
+      port.postMessage({ type: 'dialog:respond', dialogId: msg.payload.dialogId, buttonId: msg.payload.buttonId });
+      sendResponse({ ok: true });
+      break;
+    }
+    default:
+      sendResponse({ ok: false, message: `未知 ai: 操作：${msg.action}` });
+  }
+}
 
 // ---- 消息路由 ----
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
+      // AI 管理器消息优先单独处理
+      if (msg && String(msg.action || '').startsWith('ai:')) {
+        handleAiMessage(msg, sender, sendResponse);
+        return;
+      }
       switch (msg?.action) {
         case 'bm:navigate': {
           // 书签栏跳转代理：chrome:// 等内部页面无法由网页 location 跳转，
