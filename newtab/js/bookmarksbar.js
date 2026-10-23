@@ -8,6 +8,7 @@
 
 import { colorFor, letterFor } from './widgets/topSites.js';
 import { placePopover } from './widgets/popover.js';
+import { faviconImgHtml, wireFavicons as wireFavImgs } from './favicon.js';
 
 let pop = null;        // 当前打开的文件夹面板（挂 body）
 let popAnchor = null;  // 面板锚定的按钮（再点同一个 = 收起）
@@ -51,38 +52,23 @@ function hostOf(url) {
 const FOLDER_SVG = `<svg class="bm-folder-svg" viewBox="0 0 20 16" aria-hidden="true"><path fill="currentColor" d="M1.6 3.2c0-.9.7-1.6 1.6-1.6h4.3c.4 0 .8.2 1.1.5l1.2 1.4h7.1c.9 0 1.6.7 1.6 1.6v8.5c0 .9-.7 1.6-1.6 1.6H3.2c-.9 0-1.6-.7-1.6-1.6V3.2z"/></svg>`;
 
 // 图标磁贴：底层字母磁贴 + 上层真实 favicon（加载成功后覆盖字母）。
-// 只有 http/https 站点才请求 favicon：chrome:// 等内部地址的图片加载
-// 会被拒绝（Not allowed to load local resource），不生成 img 免报错。
+// favicon 走 chrome://favicon2（Chrome 自带缓存，零网络请求）；无缓存的站点
+// 回退字母磁贴。chrome:// 等内部地址不生成 img。
 function iconHtml(url) {
   const host = hostOf(url);
-  let src = '';
-  try {
-    const u = new URL(url);
-    if (u.protocol === 'http:' || u.protocol === 'https:') src = `${u.origin}/favicon.ico`;
-  } catch {}
   return `
-    <span class="bm-icon" style="--tab-color:${colorFor(host)}">
-      <span class="bm-letter">${escapeHtml(letterFor(host || '?'))}</span>
-      ${src ? `<img class="bm-favicon" src="${escapeAttr(src)}" alt="" loading="lazy" />` : ''}
+    <span class="bm-icon fav-wrap" style="--tab-color:${colorFor(host)}">
+      <span class="fav-letter">${escapeHtml(letterFor(host || '?'))}</span>
+      ${faviconImgHtml(url)}
     </span>
   `;
 }
 
 // 给 scope 内所有 favicon 挂载成功/失败处理（成功 → 盖住字母；失败 → 移除 img）。
-// 双保险：非 http/https 的 src 直接移除（历史渲染残留/异常数据兜底）。
 function wireFavicons(scope) {
-  for (const img of scope.querySelectorAll('.bm-favicon')) {
-    if (!/^https?:/i.test(img.src)) { img.remove(); continue; }
-    const icon = img.closest('.bm-icon');
-    if (img.complete) {
-      // 缓存命中：同步判定（complete 且 naturalWidth>0 = 成功）
-      if (img.naturalWidth > 0) icon.classList.add('loaded');
-      else img.remove();
-    } else {
-      img.addEventListener('load', () => icon.classList.add('loaded'), { once: true });
-      img.addEventListener('error', () => img.remove(), { once: true });
-    }
-  }
+  // 先清理历史遗留的旧结构 class（bm-favicon），再统一走公共逻辑
+  for (const old of scope.querySelectorAll('.bm-favicon')) old.classList.add('fav-img');
+  wireFavImgs(scope);
 }
 
 export function initBookmarkBar() {

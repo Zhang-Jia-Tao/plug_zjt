@@ -1,11 +1,11 @@
 // widgets/topSites.js — 常用网站小组件
 // chrome.topSites 读取浏览器「最常访问」+ 用户自定义网址（data.customSites）合并显示。
-// 图标不依赖 favicon 网络服务（google s2 国内不可达）：用域名首字母 +
-// 按域名哈希生成的固定配色生成本地磁贴，零网络请求、永不失败。
+// 图标：优先请求站点真实 favicon（origin/favicon.ico），失败回退品牌色首字母磁贴。
 // 添加表单弹层挂 document.body（widget 卡片 overflow:hidden 会裁剪卡内弹层）。
 // 私有配置：showLimit、newTab、customSites
 
 import { placePopover } from './popover.js';
+import { faviconImgHtml, wireFavicons } from '../favicon.js';
 
 // 品牌色兜底：常见站点给固定颜色，其余按域名哈希取色
 //（书签栏 bookmarksbar.js 也复用这两个函数，保持全站配色一致）
@@ -164,12 +164,17 @@ export default {
         const name = (s.title || host).replace(/^www\./, '');
         return `
           <a class="site-tile" href="${escapeAttr(s.url)}" ${data.newTab ? 'target="_blank" rel="noopener"' : ''} title="${escapeAttr(name)}">
-            <span class="site-icon" style="--site-color:${color}">${escapeHtml(letter)}</span>
+            <span class="site-icon fav-wrap" style="--site-color:${color}">
+              <span class="fav-letter">${escapeHtml(letter)}</span>
+              ${faviconImgHtml(s.url, { eager: true })}
+            </span>
             <span class="site-name">${escapeHtml(name.slice(0, 12))}</span>
             ${s.custom ? `<button class="site-del" data-id="${s.id}" title="移除自定义网址">✕</button>` : ''}
           </a>
         `;
       }).join('');
+      // 磁贴 favicon 是可见的（无隐藏容器），用 eager 直读
+      wireFavicons(el);
       if (merged.length < limit || true) el.appendChild(addBtn);
     }
 

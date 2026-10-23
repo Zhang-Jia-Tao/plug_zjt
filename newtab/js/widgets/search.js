@@ -7,6 +7,8 @@
 // 私有配置：engine（google/bing/baidu）、newTab（新标签打开）
 
 import { placePopover } from './popover.js';
+import { faviconImgHtml, wireFavicons } from '../favicon.js';
+import { colorFor, letterFor } from './topSites.js';
 
 const ENGINES = [
   { value: 'google', label: 'Google', url: 'https://www.google.com/search?q=' },
@@ -16,8 +18,9 @@ const ENGINES = [
 
 // AI 查询入口：q 模板存在时支持把搜索词带过去；豆包/DeepSeek/Gemini 网页版
 // 不支持 URL 直带提问，点击直接打开对话页。
+// 图标：优先站点真实 favicon，失败回退品牌色首字母（与书签栏/磁贴同套路）。
 const AI_PROVIDERS = [
-  { value: 'doubao',   label: '豆包',     icon: '🤖', url: 'https://www.doubao.com/chat/' },
+  { value: 'doubao',   label: '豆包',     icon: '🤖', url: 'https://www.doubao.com/chat/', favUrl: 'https://www.doubao.com/' },
   { value: 'deepseek', label: 'DeepSeek', icon: '🐋', url: 'https://chat.deepseek.com/' },
   { value: 'chatgpt',  label: 'ChatGPT',  icon: '✳',  url: 'https://chatgpt.com/', q: 'https://chatgpt.com/?q=' },
   { value: 'gemini',   label: 'Gemini',   icon: '✦',  url: 'https://gemini.google.com/app' },
@@ -37,9 +40,15 @@ export default {
     const el = document.createElement('form');
     el.className = 'search-widget';
     el.innerHTML = `
+      <div class="search-brand">
+        <img class="search-brand-img" src="../img/brand.png" alt="可定制新标签页" />
+      </div>
       <div class="search-bar">
         <span class="search-engine-btn" title="切换搜索引擎">
-          <span class="search-engine-badge">G</span>
+          <span class="search-engine-badge fav-wrap" style="--tab-color:${colorFor('google.com')}">
+            <span class="fav-letter">${letterFor('google.com')}</span>
+            ${faviconImgHtml(ENGINES[0].url, { eager: true })}
+          </span>
         </span>
         <input type="text" class="search-input" placeholder="搜索或输入网址…" autocomplete="off" />
         <button type="button" class="search-ai-btn" title="AI 查询入口">
@@ -50,7 +59,10 @@ export default {
         <div class="ai-panel-list">
           ${AI_PROVIDERS.map(p => `
             <button type="button" class="ai-entry" data-ai="${p.value}">
-              <span class="ai-entry-icon">${p.icon}</span>
+              <span class="ai-entry-icon fav-wrap" style="--tab-color:${colorFor(hostOfAi(p))}">
+                <span class="fav-letter">${letterFor(hostOfAi(p))}</span>
+                ${faviconImgHtml(hostOfAi(p), { eager: true })}
+              </span>
               <span class="ai-entry-name">${p.label}</span>
               ${p.q ? '<span class="ai-entry-hint">支持直接提问</span>' : ''}
             </button>
@@ -59,15 +71,22 @@ export default {
       </div>
     `;
     container.appendChild(el);
+    wireFavicons(el);
 
     // 引擎菜单挂 body，fixed 定位（避免被卡片 overflow:hidden 裁剪）
     const menu = document.createElement('div');
     menu.className = 'search-engine-menu hidden';
-    menu.innerHTML = ENGINES.map(e => `
+    menu.innerHTML = ENGINES.map(e => {
+      const host = new URL(e.url).hostname;
+      return `
       <button type="button" class="search-engine-option" data-engine="${e.value}">
-        <span class="se-badge">${e.label[0]}</span>${e.label}
+        <span class="se-badge fav-wrap" style="--tab-color:${colorFor(host)}">
+          <span class="fav-letter">${letterFor(host)}</span>
+          ${faviconImgHtml(e.url, { eager: true })}
+        </span>${e.label}
       </button>
-    `).join('');
+      `;
+    }).join('');
     document.body.appendChild(menu);
 
     const input = el.querySelector('.search-input');
@@ -78,7 +97,14 @@ export default {
 
     function applyEngineBadge() {
       const def = ENGINES.find(e => e.value === data.engine) || ENGINES[0];
-      badge.textContent = def.label[0];
+      const host = new URL(def.url).hostname;
+      // 引擎徽标：真实 favicon 优先，失败回退首字母磁贴
+      badge.style.setProperty('--tab-color', colorFor(host));
+      badge.innerHTML = `
+        <span class="fav-letter">${letterFor(host)}</span>
+        ${faviconImgHtml(def.url, { eager: true })}
+      `;
+      wireFavicons(badge);
       engineBtn.title = `当前：${def.label}，点击切换`;
     }
     applyEngineBadge();
@@ -101,6 +127,7 @@ export default {
       if (!open) placePopover(menu, engineBtn, { width: 160 });
     });
     document.addEventListener('click', onDocClick);
+    wireFavicons(menu);
     menu.addEventListener('click', async (e) => {
       const opt = e.target.closest('.search-engine-option');
       if (!opt) return;
@@ -155,3 +182,8 @@ export default {
     };
   },
 };
+
+// AI 入口 host（豆包对话页域名取主页域名以保持品牌色一致）
+function hostOfAi(p) {
+  try { return new URL(p.favUrl || p.url).hostname; } catch { return p.url; }
+}

@@ -9,6 +9,9 @@
   <link rel="stylesheet" href="css/settings.css" />
 </head>
 <body>
+  <!-- 氛围层：低饱和光晕，给纯色底增加纵深 -->
+  <div class="atmo" aria-hidden="true"></div>
+
   <!-- 顶部书签栏：仿谷歌首页「收藏的网址」一行，点击当前标签跳转 -->
   <div id="bm-bar" class="bm-bar">
     <div id="bm-bar-list" class="bm-bar-list">
@@ -24,10 +27,33 @@
   </aside>
   <button id="tree-handle" class="tree-handle-btn" title="本地目录树">📁<span>目录</span></button>
 
-  <!-- 右上角工具条 -->
+  <!-- AI 应用管理器（右侧固定栏，Native Messaging host 驱动，常驻显示） -->
+  <aside id="ai-panel" class="ai-panel">
+    <div class="ai-head">
+      <span class="ai-head-title">AI 应用管理器</span>
+      <span id="ai-status" class="ai-status">空闲</span>
+      <button id="ai-refresh" class="ai-head-btn" title="刷新状态">⟳</button>
+    </div>
+    <div id="ai-banner" class="ai-banner hidden"></div>
+    <div id="ai-app-list" class="ai-app-list">
+      <!-- 由 JS 渲染：应用卡片（在线/任务中/离线） -->
+    </div>
+    <div id="ai-dialog-list" class="ai-dialog-list">
+      <!-- 由 JS 渲染：待处理弹窗（确认/否认按钮） -->
+    </div>
+    <div id="ai-stream" class="ai-stream">
+      <!-- 由 JS 渲染：实时消息流（顶部状态：实现中 / 完毕） -->
+    </div>
+  </aside>
+
+  <!-- 右上角工具条（SVG 图标） -->
   <div class="toolbar">
-    <button id="btn-edit" class="tool-btn" title="编辑布局">✏</button>
-    <button id="btn-settings" class="tool-btn" title="设置">⚙</button>
+    <button id="btn-edit" class="tool-btn" title="编辑布局">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    </button>
+    <button id="btn-settings" class="tool-btn" title="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+    </button>
   </div>
 
   <!-- 小组件网格 -->
