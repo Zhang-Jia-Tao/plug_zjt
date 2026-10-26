@@ -10,6 +10,7 @@
 //   {type:'message', app, role, text, ts, done}
 //   {type:'dialog', id, app, title, buttons:[{id,label}]}
 //   {type:'dialog:closed', id}
+//   {type:'sys', metrics:{cpu,mem,swap,disk,gpu,cpuTemp,gpuTemp,...}}  ← 系统资源轮询
 //   {type:'snapshot', apps, dialogs, messages}   ← 响应 {type:'query'}
 // 协议（扩展 → host）：
 //   {type:'query'} / {type:'dialog:respond', dialogId, buttonId}
@@ -62,7 +63,7 @@ const openDialogs = new Map(); // hwnd → dialog 对象
 // snapshot 字节预算：Chrome 对 host→扩展 单条消息限 1MB，超限会杀死连接。
 // 按 JSON 序列化字节累计（≤ 512KB），从最新往回装，装不下即止。
 function buildSnapshot() {
-  const appsPart = APPS.map(app => ({ id: app.id, name: app.name, status: appStatus.get(app.id) || 'offline', detail: app.detail }));
+  const appsPart = currentAppsList();
   const dialogsPart = [...openDialogs.values()];
   const budget = 512 * 1024
     - Buffer.byteLength(JSON.stringify({ apps: appsPart, dialogs: dialogsPart }), 'utf8');
@@ -81,6 +82,10 @@ function handleRequest(msg) {
   switch (msg && msg.type) {
     case 'query':
       post(buildSnapshot());
+      if (lastSys) post({ type: 'sys', metrics: lastSys }); // 快照附带当前资源数据
+      break;
+    case 'sysmon': // 页面开关：有面板订阅时 3s 高频，全部断开后 15s 低频
+      setSysmonFast(!!msg.fast);
       break;
     case 'dialog:respond':
       clickDialog(msg.dialogId, msg.buttonId);
@@ -117,7 +122,16 @@ async function scanProcesses() {
     if (app.kind === 'log') running = claudeCodeRunning;
     if (app.procs) running = running || app.procs.some(p => names.has(p.toLowerCase()));
     if (app.kind === 'http') running = running || await probeHttp(app.probe);
-    next.push({ ...app, status: running ? (appStatus.get(app.id) === 'tasking' ? 'tasking' : 'online') : 'offline' });
+    if (running) {
+      // 在线时：tasking 状态由日志 adapter 维护（emitMessage / 看门狗即时推送），
+      // 这里只做 offline 检测和 tasking 的兜底上报
+      const cur = appStatus.get(app.id);
+      next.push({ ...app, status: cur === 'tasking' ? 'tasking' : 'online' });
+    } else {
+      // 进程退出：任务必已结束，同步复位 busy 防止「幽灵 tasking」
+      if (app.id === 'claude-code' && busy) { busy = false; appStatus.set('claude-code', 'online'); }
+      next.push({ ...app, status: 'offline' });
+    }
   }
   const json = JSON.stringify(next.map(a => ({ id: a.id, status: a.status })));
   if (json !== lastAppsJson) {
@@ -139,6 +153,9 @@ let logFile = null;            // 当前跟踪的会话文件
 const logOffsets = new Map();  // path → 已读字节偏移（会话来回切换不重放历史）
 let logRemainder = '';         // 跨轮次的不完整行尾（写一半的 jsonl 行）
 let busy = false;              // claude-code 任务中
+let busySince = 0;             // tasking 起始时刻（看门狗用）
+let lastLogActivity = 0;       // 最近一次读到新日志行的时刻
+const BUSY_TIMEOUT_MS = 3 * 60 * 1000; // 看门狗：3 分钟无日志推进视为任务结束（result 事件可能丢失）
 
 function findNewestSession() {
   try {
@@ -191,6 +208,7 @@ function pollClaudeLog() {
       logRemainder = text.slice(lastNl + 1);
       const complete = text.slice(0, lastNl);
       logOffsets.set(logFile, offset + chunk.length);
+      if (complete.trim()) lastLogActivity = Date.now();
       for (const line of complete.split(/\r?\n/)) {
         const ev = parseClaudeLine(line);
         if (ev) emitMessage(ev);
@@ -227,13 +245,34 @@ function emitMessage(ev) {
   recent.push(ev);
   if (recent.length > 300) recent.splice(0, recent.length - 300);
   if (ev.app === 'claude-code') {
-    busy = ev.role === 'assistant' ? true : (ev.done ? false : busy);
+    // 状态转移：result(done) → 结束；assistant → 任务中；user 只在非任务中时开启新任务
+    // （任务中的 user 行是工具结果回传，不改变状态）
+    if (ev.done) busy = false;
+    else if (ev.role === 'assistant') { if (!busy) busySince = Date.now(); busy = true; }
+    else if (ev.role === 'user' && !busy) { busySince = Date.now(); busy = true; }
     if (appStatus.get('claude-code') !== (busy ? 'tasking' : 'online')) {
       appStatus.set('claude-code', busy ? 'tasking' : 'online');
-      lastAppsJson = ''; // 触发下轮 scanProcesses 重发 apps
+      post({ type: 'apps', apps: currentAppsList() }); // 状态变化即时推，不等下轮进程扫描
     }
   }
   post({ type: 'message', ...ev });
+}
+
+// 看门狗：tasking 超过 3 分钟且日志无任何推进 → result 丢失，强制视为完成。
+// （Claude Code 长任务每秒都会写日志行；3 分钟完全静默只可能是事件丢失或进程已退出）
+function checkBusyWatchdog() {
+  if (!busy) return;
+  const idle = Date.now() - Math.max(lastLogActivity, busySince);
+  if (idle > BUSY_TIMEOUT_MS) {
+    busy = false;
+    appStatus.set('claude-code', 'online');
+    post({ type: 'apps', apps: currentAppsList() });
+  }
+}
+
+// 组装当前应用状态列表（apps 事件与 snapshot 共用）
+function currentAppsList() {
+  return APPS.map(app => ({ id: app.id, name: app.name, status: appStatus.get(app.id) || 'offline', detail: app.detail }));
 }
 
 // ---------- 弹窗检测（UIA） ----------
@@ -290,12 +329,51 @@ function run(cmd, args) {
   });
 }
 
+// ---------- 系统资源监视（sysmon.ps1 轮询） ----------
+// 只有页面在线时才需要高频刷新；没有订阅时降频到 15s 省 CPU（sysmon.ps1 单次 ~1.6s）。
+let sysmonBusy = false;
+let sysmonTimer = null;
+let sysmonFast = false; // 页面请求快速模式（ai:subscribe 时开）
+let lastSys = null;
+
+async function pollSysmon() {
+  if (!IS_WIN || sysmonBusy) return;
+  sysmonBusy = true;
+  try {
+    const r = await run('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(HOST_DIR, 'sysmon.ps1')]);
+    if (r.code === 0 && r.stdout) {
+      const metrics = JSON.parse(r.stdout);
+      // 数值清洗：null/undefined 保留（面板显示「不支持」），其余转数字
+      lastSys = metrics;
+      post({ type: 'sys', metrics });
+    }
+  } catch { /* 单轮失败静默 */ }
+  finally { sysmonBusy = false; }
+}
+
+function scheduleSysmon() {
+  clearInterval(sysmonTimer);
+  const period = sysmonFast ? 3000 : 15000;
+  sysmonTimer = setInterval(pollSysmon, period);
+  sysmonTimer.unref();
+}
+
+function setSysmonFast(fast) {
+  if (sysmonFast === fast) return;
+  sysmonFast = fast;
+  scheduleSysmon();
+  if (fast) pollSysmon(); // 切快速时立即采一轮
+}
+
 // ---------- 主循环 ----------
-// 轮询节奏：进程扫描 6s、日志 1.2s、弹窗 5s——每轮都要拉起 PowerShell（进程开销
-// 大），全 .unref() 让空转不阻止退出。常驻后台时这是 CPU 主要来源，够慢但保持响应。
+// 轮询节奏：进程扫描 6s、日志 1.2s、弹窗 8s、看门狗 30s、sysmon 3s（无页面订阅 15s）
+// ——每轮都要拉起 PowerShell（进程开销大），全 .unref() 让空转不阻止退出。
 scanProcesses();
 pollClaudeLog();
+pollSysmon();
 setInterval(scanProcesses, 6000).unref();
 setInterval(pollClaudeLog, 1200).unref();
 setInterval(scanDialogs, 8000).unref(); // 弹窗是低频事件，8s 足够灵敏
+setInterval(checkBusyWatchdog, 30000).unref();
+scheduleSysmon();
 post({ type: 'host:ready' });

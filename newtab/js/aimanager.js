@@ -4,10 +4,24 @@
 // host 推送 apps / message / dialog 事件经 SW 广播回本页。
 // 弹窗确认/否认：ai:respond 发给 SW → host 遥控点击白名单进程的弹窗按钮。
 
+// 官方品牌图标（simple-icons 单路径 SVG，currentColor 填充随主题变色）
 const APP_ICONS = {
-  'claude-code': '🤖', 'ollama': '🦙', 'lmstudio': '🧠',
-  'claude-desktop': '✳', 'chatgpt': '◎', cursor: '⌨',
+  'claude-code': 'img/apps/claude.svg',
+  'ollama': 'img/apps/ollama.svg',
+  'lmstudio': 'img/apps/lmstudio.svg',
+  'claude-desktop': 'img/apps/claude-desktop.svg',
+  'chatgpt': 'img/apps/chatgpt.svg',
+  cursor: 'img/apps/cursor.svg',
 };
+
+// 图标 HTML：SVG 经 <img> 加载无法继承 currentColor（外链 SVG 是独立文档），
+// 这里用 <object> 不合适——直接内联不了外链。取巧：用 mask 让 SVG 当形状用，
+// background 色随 .ai-app-icon 的 color 变化，离线灰化也生效。
+function appIconHtml(id) {
+  const src = APP_ICONS[id];
+  if (!src) return '<span class="ai-app-icon-fallback">·</span>';
+  return `<span class="ai-app-icon" style="-webkit-mask-image:url('${src}');mask-image:url('${src}')"></span>`;
+}
 
 let port = null;           // 到 SW 的订阅连接
 let apps = [];             // [{id,name,status,detail}]
@@ -91,23 +105,26 @@ function onEvent(ev) {
 }
 
 // ---- 会话状态机 ----
-// tasking：收到 assistant 消息（AI 正在产出）或 user 消息（新任务下发）
+// tasking：收到 assistant 消息（AI 正在产出）或新会话的 user 消息
 // done：收到 host 的 result 完成事件（done:true）
+// 判定基准统一用消息时间戳（host 的 ts），不受页面打开时机影响：
+// snapshot 回放和实时推送走同一条 updateSessionState，行为一致。
 function updateSessionState(msg) {
   if (msg.app !== 'claude-code') return;
   if (msg.done) {
     sessionState = 'done';
     lastDoneAt = Date.now();
   } else if (msg.role === 'user') {
-    // 「完毕」超过 5 分钟后的新 user 消息 = 新会话；否则是同一会话的追加指令
-    if (sessionState !== 'tasking' && Date.now() - lastDoneAt > 5 * 60 * 1000) sessionState = 'tasking';
-    else if (sessionState !== 'done') sessionState = 'tasking';
+    // user 消息在「完毕」之后 = 新一轮任务开始（Claude Code 终端会话持续存在，
+    // user 只出现在任务真正下发的时刻，无需 5 分钟窗口）
+    if (sessionState !== 'tasking') sessionState = 'tasking';
   } else if (msg.role === 'assistant') {
+    // assistant 产出中；若上一状态已是 done，说明 result 之后又来新输出（新任务开始）
     sessionState = 'tasking';
   }
 }
 
-// snapshot 回放：扫描历史消息推断当前状态（末尾 done → 完毕；末尾 assistant → 实现中）
+// snapshot 回放：按时间顺序扫历史消息，最终状态即当前状态
 function syncSessionStateFromMessages() {
   sessionState = 'idle';
   lastDoneAt = 0;
@@ -157,7 +174,7 @@ function render() {
       ? '<div class="ai-empty">等待主机上报…<br/>若长时间无响应，请确认已运行 install-host.bat</div>'
       : apps.map(a => `
         <button class="ai-app ${a.status} ${activeApp === a.id ? 'active' : ''}" data-app="${a.id}">
-          <span class="ai-app-icon">${APP_ICONS[a.id] || '·'}</span>
+          ${appIconHtml(a.id)}
           <span class="ai-app-info">
             <span class="ai-app-name">${escapeHtml(a.name)}</span>
             <span class="ai-app-detail">${escapeHtml(a.detail || '')}</span>
@@ -243,7 +260,7 @@ function setRunbar() {
 function msgHtml(m) {
   return `
     <div class="ai-msg role-${m.role} ${m.done ? 'done' : ''}">
-      <span class="ai-msg-app">${APP_ICONS[m.app] || '·'} ${escapeHtml(appName(m.app))}</span>
+      <span class="ai-msg-app">${escapeHtml(appName(m.app))}</span>
       ${m.done ? '<span class="ai-msg-done">✓ 完成</span>' : ''}
       <div class="ai-msg-text">${escapeHtml(m.text)}</div>
     </div>
