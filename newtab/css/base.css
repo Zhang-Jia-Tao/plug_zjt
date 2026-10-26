@@ -560,7 +560,19 @@ body.ai-panel-on .toolbar { right: 372px; }
 }
 .ai-app:hover { background: var(--card-hover); }
 .ai-app.active { background: var(--card-hover); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent); }
-.ai-app-icon { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
+.ai-app-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  background: currentColor;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+.ai-app-icon-fallback { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
 .ai-app-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ai-app-name { font-size: 13px; font-weight: 500; }
 .ai-app-detail { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -568,7 +580,8 @@ body.ai-panel-on .toolbar { right: 372px; }
 .ai-app-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--muted); opacity: 0.4; }
 .ai-app.online .ai-app-dot { background: #34a853; opacity: 1; }
 .ai-app.tasking .ai-app-dot { background: var(--primary); opacity: 1; animation: ai-dot-pulse 1.2s ease-in-out infinite; }
-.ai-app.offline .ai-app-icon { filter: grayscale(1); opacity: 0.45; }
+.ai-app.online .ai-app-icon, .ai-app.tasking .ai-app-icon { color: var(--text); }
+.ai-app.offline .ai-app-icon { color: var(--muted); opacity: 0.5; }
 .ai-app.offline .ai-app-name { color: var(--muted); }
 @keyframes ai-dot-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(138, 180, 248, 0.45); }
@@ -668,3 +681,135 @@ body.ai-panel-on .toolbar { right: 372px; }
   animation: none;
 }
 .ai-runbar.finished .ai-runbar-spinner { display: none; }
+
+/* ---- 系统资源监视面板：左侧固定栏（与右侧 AI 管理器对称） ---- */
+.sys-panel {
+  position: fixed;
+  top: 56px;             /* 让位顶部书签栏 */
+  left: 24px;
+  bottom: 24px;
+  width: 300px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), var(--edge);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  overflow: hidden;
+}
+/* 网格让位（左 300 + 24 + 20 = 344；右侧 AI 面板同时存在时收窄更多） */
+body.sys-panel-on .grid { max-width: 792px; }
+body.sys-panel-on.ai-panel-on .grid { max-width: 780px; }
+@media (min-width: 1500px) {
+  body.sys-panel-on .grid,
+  body.sys-panel-on.ai-panel-on .grid { max-width: 1180px; }
+}
+/* 工具条再左移避开左侧面板（宽屏时贴右栏左侧不变） */
+body.sys-panel-on .toolbar { left: 340px; right: auto; }
+body.sys-panel-on.ai-panel-on .toolbar { left: auto; right: 372px; }
+@media (min-width: 1500px) {
+  body.sys-panel-on .toolbar { left: auto; right: 24px; }
+  body.sys-panel-on.ai-panel-on .toolbar { left: auto; right: 372px; }
+}
+
+/* 头部（含在线呼吸点） */
+.sys-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  flex-shrink: 0;
+}
+.sys-head-title { font-size: 15px; font-weight: 600; flex: 1; }
+.sys-head-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34a853;
+  animation: ai-dot-pulse 1.2s ease-in-out infinite;
+}
+
+/* 指标区（可滚动） */
+.sys-metrics {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sys-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+.sys-row-label { font-size: 12px; color: var(--muted); }
+.sys-row-val { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sys-row-val.na { color: var(--muted); font-weight: 400; font-size: 11px; }
+
+/* 占比条 */
+.sys-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  overflow: hidden;
+}
+.sys-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: var(--grad-brand);
+  transition: width 0.5s var(--ease);
+}
+.sys-bar-fill.warn { background: var(--danger); }
+
+/* 走势柱条（纯 CSS，历史 40 点） */
+.sys-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 22px;
+  margin-top: 6px;
+}
+.sys-spark i {
+  flex: 1;
+  min-width: 0;
+  height: 0%;
+  border-radius: 1px 1px 0 0;
+  background: color-mix(in srgb, var(--primary) 45%, transparent);
+  transition: height 0.5s var(--ease);
+}
+.sys-spark i:last-child { background: var(--primary); opacity: 0.9; }
+
+/* 温度双卡 */
+.sys-temps {
+  display: flex;
+  gap: 10px;
+}
+.sys-temp {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  background: color-mix(in srgb, var(--card-hover) 60%, transparent);
+}
+.sys-temp-label { font-size: 10px; color: var(--muted); }
+.sys-temp-val { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sys-temp-val.na { color: var(--muted); font-weight: 400; font-size: 11px; }
+.sys-temp-val.warn { color: var(--danger); }
+
+/* 摘要行 */
+.sys-sub {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}

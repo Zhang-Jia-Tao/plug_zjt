@@ -6,6 +6,7 @@ import { renderGrid } from './grid.js';
 import { WIDGETS } from './widgets/registry.js';
 import { initBookmarkBar } from './bookmarksbar.js';
 import { initAiManager } from './aimanager.js';
+import { initSysMonitor } from './sysmonitor.js';
 
 let state = null;
 
@@ -229,14 +230,15 @@ function bindSettings() {
   });
 }
 
-// ---- 本地目录树侧边栏（newtab 页内嵌，同网页版共用 tree.html） ----
+// ---- 本地目录树侧边栏（已禁用：把手隐藏，代码保留可随时恢复） ----
 function bindTreeSidebar() {
   const sidebar = $('#tree-sidebar');
   const handle = $('#tree-handle');
+  if (!handle || !sidebar) return;
   handle.addEventListener('click', () => {
     const open = sidebar.classList.toggle('hidden') === false;
     handle.classList.toggle('active', open);
-    handle.innerHTML = open ? '📁<span>目录</span>' : '📁<span>目录</span>';
+    handle.innerHTML = '📁<span>目录</span>';
     handle.title = open ? '收起目录树' : '本地目录树';
     document.body.classList.toggle('tree-open', open);
   });
@@ -257,6 +259,7 @@ async function init() {
   bindTreeSidebar();
   initBookmarkBar();
   initAiManager();
+  initSysMonitor();
 }
 
 init();

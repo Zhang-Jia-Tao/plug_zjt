@@ -20,12 +20,22 @@
     <button id="bm-more" class="bm-more hidden" title="更多书签">»</button>
   </div>
 
-  <!-- 本地目录树侧边栏（全屏 iframe，同 tree.html 逻辑） -->
+  <!-- 本地目录树侧边栏（已禁用：改由资源监视面板占据左侧，功能保留可随时恢复） -->
   <aside id="tree-sidebar" class="nt-tree-sidebar-page hidden">
     <iframe id="tree-frame" src="tree.html" frameborder="0"></iframe>
     <button id="tree-toggle" class="tree-toggle-btn" title="收起目录树">‹</button>
   </aside>
-  <button id="tree-handle" class="tree-handle-btn" title="本地目录树">📁<span>目录</span></button>
+
+  <!-- 系统资源监视面板（左侧常驻，与右侧 AI 管理器对称，host sysmon 轮询驱动） -->
+  <aside id="sys-panel" class="sys-panel">
+    <div class="sys-head">
+      <span class="sys-head-title">系统资源</span>
+      <span class="sys-head-dot" id="sys-live"></span>
+    </div>
+    <div id="sys-metrics" class="sys-metrics">
+      <!-- 由 JS 渲染：CPU/内存/GPU/交换/磁盘 占比条 + 走势 + 温度 -->
+    </div>
+  </aside>
 
   <!-- AI 应用管理器（右侧固定栏，Native Messaging host 驱动，常驻显示） -->
   <aside id="ai-panel" class="ai-panel">

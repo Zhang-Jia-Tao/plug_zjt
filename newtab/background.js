@@ -17,7 +17,14 @@ const aiSubscribers = new Set(); // 页面 port（onDisconnect 自动摘除）
 chrome.runtime.onConnect.addListener((pagePort) => {
   if (pagePort.name !== 'ai:subscribe') return;
   aiSubscribers.add(pagePort);
-  pagePort.onDisconnect.addListener(() => aiSubscribers.delete(pagePort));
+  pagePort.onDisconnect.addListener(() => {
+    aiSubscribers.delete(pagePort);
+    // 全部页面断开：sysmon 降频（host 侧 15s 低频轮询省 CPU）
+    if (aiSubscribers.size === 0) {
+      const p = aiPort;
+      if (p) p.postMessage({ type: 'sysmon', fast: false });
+    }
+  });
   // 新订阅者：确保 host 连接活着，并立即请求一份快照
   const port = ensureAiPort();
   if (port) port.postMessage({ type: 'query' });
@@ -55,6 +62,13 @@ function handleAiMessage(msg, sender, sendResponse) {
       const port = ensureAiPort();
       if (!port) { sendResponse({ ok: false, message: 'host 未连接' }); break; }
       port.postMessage({ type: 'query' });
+      sendResponse({ ok: true });
+      break;
+    }
+    case 'ai:sysmon': {
+      // 页面通知 sysmon 高频/低频（host 侧去重，所有订阅者共享）
+      const port = ensureAiPort();
+      if (port) port.postMessage({ type: 'sysmon', fast: !!msg.fast });
       sendResponse({ ok: true });
       break;
     }
