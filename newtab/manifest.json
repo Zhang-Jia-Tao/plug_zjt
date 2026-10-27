@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "可定制新标签页",
   "version": "1.2.0",
-  "description": "自由设计与编排新标签页小组件：时间、日历、便利贴任务等，支持拖拽布局与本地目录树",
+  "description": "自由设计与编排新标签页小组件：时间、日历、番茄钟、便利贴任务等，支持拖拽布局与本地目录树",
   "chrome_url_overrides": {
     "newtab": "index.html"
   },
