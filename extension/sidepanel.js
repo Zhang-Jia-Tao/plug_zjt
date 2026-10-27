@@ -938,7 +938,7 @@ async function onSync() {
       let msg = `已推送 ${r.pushed}/${r.total}（失败 ${r.failed}）`;
       // 可选列缺失时提示一次，避免用户以为账号/密码等字段没同步是 bug
       if (Array.isArray(r.missingOptional) && r.missingOptional.length) {
-        msg += `；未建可选列已跳过：${r.missingOptional.join('、')}`;
+        msg += `；可选列缺失/类型不符已跳过：${r.missingOptional.join('、')}`;
       }
       toast(msg);
     }

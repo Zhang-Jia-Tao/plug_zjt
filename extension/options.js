@@ -53,7 +53,7 @@ async function onTest() {
       let msg = '✓ 连接成功';
       if (r.warning) msg += `（${r.warning}）`;
       else if (Array.isArray(r.missingOptional) && r.missingOptional.length) {
-        msg += `（可选列缺失，将跳过：${r.missingOptional.join('、')}）`;
+        msg += `（可选列缺失/类型不符，将跳过：${r.missingOptional.join('、')}）`;
       }
       setResult(el, msg, true);
     } else {
