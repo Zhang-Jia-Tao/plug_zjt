@@ -4,6 +4,7 @@
 
 import timeCalendar from './timeCalendar.js';
 import stickyTasks from './stickyTasks.js';
+import focusTimer from './focusTimer.js';
 import search from './search.js';
 import topSites from './topSites.js';
 import music from './music.js';
@@ -11,6 +12,7 @@ import music from './music.js';
 export const WIDGETS = [
   timeCalendar,
   stickyTasks,
+  focusTimer,
   search,
   topSites,
   music,

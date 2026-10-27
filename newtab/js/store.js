@@ -5,7 +5,7 @@ const KEY = 'newtab_state';
 
 // 状态结构版本号：新增默认组件等增量变更时 +1，
 // 并在 migrateState 中补对应迁移逻辑（老用户自动升级，不动其已排好的布局）
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 // 预置背景色（设置面板可选）
 export const BG_PRESETS = [
@@ -31,6 +31,7 @@ export const DEFAULT_STATE = {
     { id: 'w-tc',       key: 'timeCalendar', size: 'm', data: { hour24: true, showSeconds: true, showTimezone: true, weekStart: 1, events: [] } },
     { id: 'w-sites',    key: 'topSites',     size: 'l', data: { showLimit: 10, newTab: false, customSites: [] } },
     { id: 'w-tasks',    key: 'stickyTasks',  size: 'm', data: { showLimit: 10 } },
+    { id: 'w-focus',    key: 'focusTimer',   size: 'm', data: { minutes: 25, endAt: 0, remainingMs: 25 * 60 * 1000, running: false } },
     { id: 'w-music',    key: 'music',        size: 'm', data: { dirId: '', volume: 0.8, loop: false } },
   ],
 };
@@ -50,7 +51,7 @@ export async function loadState() {
 
 // 状态版本迁移：settings.schemaVersion 缺失/落后时升级旧数据
 // 返回迁移后的新 state（无需迁移返回 null）
-function migrateState(state) {
+export function migrateState(state) {
   const version = state.settings.schemaVersion || 1;
   if (version >= SCHEMA_VERSION) return null;
   let migrated = structuredClone(state);
@@ -118,6 +119,14 @@ function migrateState(state) {
   // v6 -> v7：页面底层画布由深色改为白色（默认主题切换为浅色，设置面板仍可切回深色）
   if (version < 7) {
     migrated.settings.theme = 'light';
+  }
+  // v7 -> v8：追加番茄钟小组件（不动已有布局顺序）
+  if (version < 8) {
+    const keys = new Set(migrated.widgets.map(w => w.key));
+    if (!keys.has('focusTimer')) {
+      const def = DEFAULT_STATE.widgets.find(w => w.key === 'focusTimer');
+      if (def) migrated.widgets.push(structuredClone(def));
+    }
   }
   return migrated;
 }

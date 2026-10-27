@@ -10,6 +10,7 @@ const HISTORY_LEN = 40;        // 走势柱条数
 const history = { cpu: [], mem: [], gpu: [], swap: [], disk: [] };
 let port = null;
 let lastMetrics = null;
+let lastUpdated = 0; // 最近一次收到 sys 事件的时间（呼吸点/摘要行用）
 
 // 指标定义：key → {label, unit, 高压阈值(变红)}
 const METRICS = [
@@ -26,6 +27,46 @@ export function initSysMonitor() {
   document.body.classList.add('sys-panel-on');
   renderStatic();  // 先画骨架（等待数据态）
   connect();
+  bindRefresh();
+  bindVisibility();
+  // 数据停滞指示：超过 12s 没收到 sys 事件把呼吸点变灰
+  setInterval(() => {
+    const dot = document.getElementById('sys-live');
+    if (!dot) return;
+    dot.classList.toggle('stale', !lastUpdated || Date.now() - lastUpdated > 12000);
+    dot.title = lastUpdated
+      ? `更新于 ${new Date(lastUpdated).toLocaleTimeString('zh-CN', { hour12: false })}`
+      : '等待数据';
+  }, 2000);
+}
+
+function bindRefresh() {
+  const btn = document.getElementById('sys-refresh');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    btn.classList.remove('spinning');
+    // 重新触发一次快照（host 收到 query 会补发 lastSys）
+    void btn.offsetWidth;
+    btn.classList.add('spinning');
+    chrome.runtime.sendMessage({ action: 'ai:query' }, () => { void chrome.runtime.lastError; });
+    setFast(!document.hidden);
+    setTimeout(() => btn.classList.remove('spinning'), 800);
+  });
+}
+
+// 页面切到后台时把 host 轮询降到 15s，回到前台恢复 3s，减少常驻 CPU
+function bindVisibility() {
+  document.addEventListener('visibilitychange', () => {
+    setFast(!document.hidden);
+    if (!document.hidden) {
+      // 回到前台立即取一份最新快照，不必等下一轮 3s
+      chrome.runtime.sendMessage({ action: 'ai:query' }, () => { void chrome.runtime.lastError; });
+    }
+  });
+}
+
+function setFast(fast) {
+  chrome.runtime.sendMessage({ action: 'ai:sysmon', fast }, () => { void chrome.runtime.lastError; });
 }
 
 // ---- 连接（独立订阅口；断线指数退避重连） ----
@@ -46,14 +87,16 @@ function connect() {
       connect();
     }, reconnectDelay);
   });
-  // 告知 host：监视面板在线，sysmon 切 3s 高频（host 侧对所有订阅者共享一份）
-  chrome.runtime.sendMessage({ action: 'ai:sysmon', fast: true }, () => { void chrome.runtime.lastError; });
+  // 告知 host：监视面板在线，sysmon 切 3s 高频；
+  // 页面在后台时保持 15s 低频（host 侧对所有订阅者共享一份）
+  setFast(!document.hidden);
 }
 
 function onEvent(ev) {
   if (!ev || ev.type !== 'sys') return;
   reconnectDelay = 1000; // 收到数据说明链路健康，重置退避
   lastMetrics = ev.metrics || {};
+  lastUpdated = Date.now();
   try {
     pushHistory(lastMetrics);
     renderValues();
@@ -126,11 +169,21 @@ function renderValues() {
   const sub = document.getElementById('sys-sub');
   if (sub) {
     const parts = [];
-    if (typeof m.memUsed === 'number') parts.push(`内存 ${m.memUsed.toFixed(1)}/${m.memTotal.toFixed(1)}GB`);
-    if (typeof m.swapUsed === 'number') parts.push(`交换 ${m.swapUsed.toFixed(1)}/${m.swapTotal.toFixed(1)}GB`);
+    if (typeof m.memUsed === 'number' && typeof m.memTotal === 'number') {
+      parts.push(`内存 ${m.memUsed.toFixed(1)}/${m.memTotal.toFixed(1)}GB`);
+    }
+    if (typeof m.swapUsed === 'number' && typeof m.swapTotal === 'number') {
+      parts.push(`交换 ${m.swapUsed.toFixed(1)}/${m.swapTotal.toFixed(1)}GB`);
+    }
+    if (typeof m.vramUsed === 'number' && typeof m.vramTotal === 'number' && m.vramTotal > 0) {
+      parts.push(`显存 ${m.vramUsed.toFixed(1)}/${m.vramTotal.toFixed(1)}GB`);
+    }
     if (typeof m.diskRead === 'number') parts.push(`读 ${m.diskRead.toFixed(1)}MB/s`);
     if (typeof m.diskWrite === 'number') parts.push(`写 ${m.diskWrite.toFixed(1)}MB/s`);
     if (typeof m.uptime === 'number') parts.push(`开机 ${m.uptime.toFixed(0)}h`);
+    if (lastUpdated) {
+      parts.push(`更新 ${new Date(lastUpdated).toLocaleTimeString('zh-CN', { hour12: false })}`);
+    }
     sub.textContent = parts.join(' · ');
   }
 }

@@ -504,7 +504,8 @@ body.ai-panel-on .toolbar { right: 372px; }
   0%, 100% { box-shadow: 0 0 0 0 rgba(138, 180, 248, 0.4); }
   50% { box-shadow: 0 0 0 5px rgba(138, 180, 248, 0); }
 }
-.ai-head-btn {
+.ai-head-btn,
+.sys-head-btn {
   border: none;
   background: transparent;
   color: var(--muted);
@@ -519,7 +520,13 @@ body.ai-panel-on .toolbar { right: 372px; }
   flex-shrink: 0;
   transition: background 0.15s, color 0.15s;
 }
-.ai-head-btn:hover { background: var(--card-hover); color: var(--text); }
+.ai-head-btn:hover,
+.sys-head-btn:hover { background: var(--card-hover); color: var(--text); }
+.sys-head-btn.spinning { animation: sys-refresh-spin 0.7s linear; }
+@keyframes sys-refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 
 /* 未连接横幅 */
 .ai-banner {
@@ -730,7 +737,16 @@ body.ai-panel-on .toolbar { right: 372px; }
   font-family: Consolas, "Courier New", monospace;
   flex-shrink: 0;
   opacity: 0.7;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: 10px;
+  cursor: pointer;
+  transition: opacity 0.15s, color 0.15s;
 }
+.ai-session-id:hover { opacity: 1; color: var(--primary); }
+.ai-session-id.copied { opacity: 1; color: #34a853; }
 
 /* ---- 系统资源监视面板：左侧固定栏（与右侧 AI 管理器对称） ---- */
 .sys-panel {
@@ -780,6 +796,12 @@ body.sys-panel-on.ai-panel-on .toolbar { left: auto; right: 372px; }
   border-radius: 50%;
   background: #34a853;
   animation: ai-dot-pulse 1.2s ease-in-out infinite;
+}
+/* 超过 12s 没收到新数据：呼吸点变灰，提示数据可能停滞 */
+.sys-head-dot.stale {
+  background: var(--muted);
+  animation: none;
+  opacity: 0.6;
 }
 
 /* 指标区（可滚动） */

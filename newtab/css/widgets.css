@@ -571,6 +571,71 @@
   max-width: 100%;
 }
 
+/* ---- 番茄钟 / 专注倒计时 ---- */
+.focus-timer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 4px 0;
+}
+.ft-clock {
+  position: relative;
+  width: 136px;
+  height: 136px;
+  display: grid;
+  place-items: center;
+}
+.ft-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ft-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text) 12%, transparent);
+  stroke-width: 7;
+}
+.ft-progress {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 7;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: rotate(-90deg);
+  transition: stroke-dashoffset 0.25s linear, stroke 0.2s;
+}
+.focus-timer.done .ft-progress { stroke: #34a853; }
+.ft-center {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.ft-time {
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.focus-timer.running .ft-time { color: var(--primary); }
+.ft-label { font-size: 10px; color: var(--muted); letter-spacing: 1px; }
+.ft-actions { display: flex; gap: 8px; }
+.ft-btn {
+  border: 1px solid var(--card-border);
+  background: var(--card-hover);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 18px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+.ft-btn:hover { border-color: var(--primary); transform: translateY(-1px); }
+.ft-primary { background: var(--grad-brand); border-color: transparent; color: #fff; }
+.ft-primary:hover { color: #fff; }
+
 /* ---- 本地音乐播放器 ----
    布局：两列（左：唱片+控制+进度+小猫；右：播放列表独立滚动）。
    m 尺寸（2 列卡片）即可舒适显示，不再需要满宽。 */

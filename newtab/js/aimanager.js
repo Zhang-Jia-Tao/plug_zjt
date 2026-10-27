@@ -38,6 +38,8 @@ export function initAiManager() {
   render();
   renderSessionStats();
   connect();         // 常驻面板：加载即连接
+  // 相对时间（刚刚/N 分钟前）会随时间过期，30s 强制重画一次统计卡
+  setInterval(() => renderSessionStats(true), 30000);
 }
 
 // ---- 连接（SW/host 断开后自动重连，避免面板假死） ----
@@ -226,15 +228,15 @@ function fmtLastRequest(iso) {
   return new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function renderSessionStats() {
+function renderSessionStats(force = false) {
   const el = document.getElementById('ai-session');
   if (!el) return;
   const json = JSON.stringify(sessions);
-  if (json === lastStatsJson) return; // 内容无变化不重画
+  if (!force && json === lastStatsJson) return; // 内容无变化不重画
   lastStatsJson = json;
 
   if (sessions.length === 0) {
-    el.innerHTML = '<div class="ai-session-empty">暂无会话数据</div>';
+    el.innerHTML = '<div class="ai-session-empty">暂无会话数据<br/>启动 Claude Code / ChatGPT 后自动出现</div>';
     return;
   }
   el.innerHTML = sessions.map((s, i) => `
@@ -260,10 +262,20 @@ function renderSessionStats() {
       </div>
       <div class="ai-session-foot">
         <span class="ai-session-last">${fmtLastRequest(s.lastTs)}</span>
-        <span class="ai-session-id">${escapeHtml((s.id || '').slice(0, 8))}</span>
+        <button type="button" class="ai-session-id" data-copy="${escapeAttr(s.id || '')}" title="复制完整会话 ID">${escapeHtml((s.id || '').slice(0, 8))}</button>
       </div>
     </div>
   `).join('');
+}
+
+async function copyText(text) {
+  if (!text) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function appName(id) {
@@ -272,7 +284,21 @@ function appName(id) {
 }
 
 // ---- 交互（事件委托，渲染后不用重挂） ----
-document.addEventListener('click', (e) => {
+document.addEventListener('click', async (e) => {
+  // 会话短 ID → 复制完整 ID
+  const idBtn = e.target.closest('.ai-session-id');
+  if (idBtn) {
+    e.stopPropagation();
+    const ok = await copyText(idBtn.dataset.copy);
+    const prev = idBtn.textContent;
+    idBtn.textContent = ok ? '已复制' : '复制失败';
+    idBtn.classList.add('copied');
+    setTimeout(() => {
+      idBtn.textContent = prev;
+      idBtn.classList.remove('copied');
+    }, 1200);
+    return;
+  }
   // 弹窗按钮 → 确认/否认
   const btn = e.target.closest('.ai-dialog-btn');
   if (btn) {
