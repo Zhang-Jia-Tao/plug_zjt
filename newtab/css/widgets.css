@@ -23,13 +23,13 @@
   height: 100%;
 }
 /* 品牌图：AI 生成的插件标识，浮出搜索卡片上缘之外（脱离组件范围）。
-   top 取 -76px：卡片内边距 20px + 图标高 56px，图标底边正好贴住卡片顶边框，
-   落在网格顶部 104px 留白区内（书签栏 44px 之下），不产生任何布局位移。 */
+   top 取 -58px：图标高 56px，占据卡片上方 58px，底边距卡片顶边 2px；
+   网格顶部留白 104px，图标顶边落在 46px，正好避开 44px 书签栏，不产生布局位移。 */
 .widget-search { overflow: visible; }
 .widget-search .widget-body { overflow: visible; }
 .search-brand {
   position: absolute;
-  top: -76px;
+  top: -58px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -639,6 +639,14 @@
 /* ---- 本地音乐播放器 ----
    布局：两列（左：唱片+控制+进度+小猫；右：播放列表独立滚动）。
    m 尺寸（2 列卡片）即可舒适显示，不再需要满宽。 */
+/* 3 列 M 卡的时间卡变窄：46px 时钟会顶到边框，按网格可用宽度降一档 */
+@container (min-width: 701px) and (max-width: 1100px) {
+  .widget.size-m .tc-time { font-size: 40px; }
+  .widget.size-m .tc-ss { font-size: 17px; }
+  .widget.size-m .tc-top { gap: 14px; }
+  .widget.size-m .tc-clock { padding-right: 12px; }
+}
+
 .music-widget { height: 100%; overflow: hidden; }
 .music-empty {
   height: 100%;

@@ -34,7 +34,7 @@ const sessionStates = { 'claude-code': 'idle', codex: 'idle' };
 export function initAiManager() {
   const panel = document.getElementById('ai-panel');
   if (!panel) return;
-  document.body.classList.add('ai-panel-on');
+  // body.ai-panel-on 由 main.js 的布局逻辑统一管理（停靠/抽屉）
   render();
   renderSessionStats();
   connect();         // 常驻面板：加载即连接

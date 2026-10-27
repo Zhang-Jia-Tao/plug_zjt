@@ -1,5 +1,7 @@
 /* settings.css — 设置面板 */
 
+body.settings-open { overflow: hidden; }
+
 .settings {
   position: fixed;
   inset: 0;
@@ -8,6 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
   z-index: 100;
   animation: settings-fade 0.2s ease-out;
 }
@@ -22,9 +25,11 @@
   border: 1px solid var(--card-border);
   border-radius: 20px;
   box-shadow: var(--shadow-lift), var(--edge);
-  width: min(520px, 92vw);
-  max-height: 84vh;
+  width: min(560px, 100%);
+  max-height: min(84vh, 760px);
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
   padding: 22px;
   display: flex;
   flex-direction: column;
@@ -36,9 +41,19 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .settings-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 8px 0 12px;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border-bottom: 1px solid var(--card-border);
   font-size: 16px;
   font-weight: 600;
 }
@@ -69,6 +84,15 @@
   max-width: 260px;
 }
 .settings-row input:focus, .settings-row select:focus { border-color: var(--primary); }
+.settings-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  max-width: 18px;
+  padding: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
 /* 取色器：去默认白底，贴合面板风格 */
 .settings-row input[type="color"] {
   padding: 2px;
@@ -151,3 +175,21 @@
 }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+/* 窄屏：设置行纵向排列，避免标签和控件互相挤压 */
+@media (max-width: 480px) {
+  .settings { align-items: flex-start; padding: 10px; }
+  .settings-card {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+    padding: 18px;
+    border-radius: 16px;
+  }
+  .settings-row { flex-wrap: wrap; }
+  .settings-row > input:not([type="color"]):not([type="checkbox"]),
+  .settings-row > select {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .settings-row input[type="color"] { margin-left: auto; }
+}

@@ -24,7 +24,7 @@ const METRICS = [
 export function initSysMonitor() {
   const panel = document.getElementById('sys-panel');
   if (!panel) return;
-  document.body.classList.add('sys-panel-on');
+  // body.sys-panel-on 由 main.js 的布局逻辑统一管理（停靠/抽屉）
   renderStatic();  // 先画骨架（等待数据态）
   connect();
   bindRefresh();

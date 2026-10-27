@@ -19,6 +19,12 @@
   --edge: inset 0 1px 0 rgba(255, 255, 255, 0.07); /* 卡片顶缘高光，营造玻璃厚度 */
   --radius: 18px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 整体布局尺寸：左右面板宽度 + 外边距 + 网格间隙，供网格让位/工具条定位复用 */
+  --sys-w: 300px;
+  --ai-w: 320px;
+  --panel-edge: 24px;
+  --panel-gap: 20px;
+  --page-gutter: 28px;
 }
 
 body[data-theme="light"] {
@@ -39,6 +45,22 @@ body[data-theme="light"] {
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* 键盘焦点：只在键盘导航时出现，鼠标点击不显示描边 */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+button:focus:not(:focus-visible) { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 html, body {
   height: 100%;
@@ -77,22 +99,30 @@ body[data-theme="light"] .atmo {
 }
 ::-webkit-scrollbar-thumb:hover { background-color: rgba(128, 138, 150, 0.45); }
 
-/* ---- 网格：固定 4 列流式布局 ---- */
+/* ---- 网格：外层让位左右面板，内层按可用宽度自适应列数 ----
+   .grid-shell 是容器查询容器：面板停靠时通过 padding 收窄，网格据此换列，
+   不再依赖「固定 max-width + 居中」——那种做法在 1280/1440 会被两侧面板覆盖。 */
+.grid-shell {
+  container-type: inline-size;
+  padding: 0 var(--page-gutter);
+  transition: padding 0.24s var(--ease);
+}
 .grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   /* 固定行高：卡片内容滚动而非撑高卡片（音乐列表等长内容） */
   grid-auto-rows: 208px;
   gap: 20px;
+  width: 100%;
   max-width: 1180px;
   margin: 0 auto;
-  /* 顶部 40px 让位仿标签栏，底部留呼吸空间 */
-  padding: 104px 28px 48px;
+  /* 顶部 104px 让位书签栏 + 搜索品牌图；横向由 .grid-shell 统一留白 */
+  padding: 104px 0 48px;
 }
 /* l 尺寸（满宽）卡片可以占两行（音乐播放器等需要更高空间） */
 .widget.size-l.tall { grid-row: span 2; }
 
-/* widget 卡片：尺寸 → 列跨度 */
+/* widget 卡片：尺寸 → 列跨度（窄容器下逐级降级） */
 .widget {
   position: relative;
   background: var(--card);
@@ -113,6 +143,31 @@ body[data-theme="light"] .atmo {
 .widget.size-s { grid-column: span 1; }
 .widget.size-m { grid-column: span 2; }
 .widget.size-l { grid-column: span 4; }
+
+/* 可用宽度 1100 以下：视觉 3 列（底层 6 轨，方便 m=半宽、s=三分之一的整除排布） */
+@container (max-width: 1100px) {
+  .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .widget.size-s { grid-column: span 2; }
+  .widget.size-m { grid-column: span 3; }
+  .widget.size-l { grid-column: span 6; }
+}
+/* 可用宽度 700 以下：视觉 2 列；m/l 占满，s 占一半（避免时间卡被压到放不下 46px 时钟） */
+@container (max-width: 700px) {
+  .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .widget.size-s { grid-column: span 2; }
+  .widget.size-l,
+  .widget.size-m { grid-column: span 4; }
+}
+/* 可用宽度 480 以下：单列，所有尺寸都占满 */
+@container (max-width: 480px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: 188px;
+  }
+  .widget.size-s,
+  .widget.size-m,
+  .widget.size-l { grid-column: span 1; }
+}
 
 /* 编辑模式 */
 body.editing .widget { cursor: grab; }
@@ -180,6 +235,12 @@ body.editing .widget .widget-tools { display: flex; }
 .tool-btn svg { width: 16px; height: 16px; display: block; }
 .tool-btn:hover { background: var(--card-hover); color: var(--text); transform: translateY(-1px); }
 .tool-btn.active { background: var(--grad-brand); color: #fff; }
+.tool-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 5px 3px;
+  background: var(--card-border);
+}
 
 /* ---- 编辑提示条 ---- */
 .edit-hint {
@@ -263,6 +324,7 @@ body[data-theme="light"] .bm-bar {
 }
 .bm-bar-list {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -449,11 +511,11 @@ body.tree-open .toolbar { transform: translateX(300px); }
 .ai-panel {
   position: fixed;
   top: 56px;             /* 让位顶部书签栏 */
-  right: 24px;
-  bottom: 24px;
-  width: 320px;
+  right: var(--panel-edge);
+  bottom: var(--panel-edge);
+  width: var(--ai-w);
   z-index: 40;
-  display: flex;
+  display: none;         /* 由 body.ai-panel-on 打开，避免 JS 未加载时闪出 */
   flex-direction: column;
   background: var(--card);
   border: 1px solid var(--card-border);
@@ -463,21 +525,15 @@ body.tree-open .toolbar { transform: translateX(300px); }
   -webkit-backdrop-filter: blur(16px) saturate(1.2);
   overflow: hidden;
 }
-/* 网格收窄让位（右栏 320px + 24px 边距 + 20px 间隙 ≈ 388px） */
-body.ai-panel-on .grid { max-width: 792px; }
-@media (min-width: 1500px) {
-  body.ai-panel-on .grid { max-width: 1180px; }
-}
-/* 工具条左移让位右栏（面板常驻，位置固定不跳动） */
-body.ai-panel-on .toolbar { right: 372px; }
-
+body.ai-panel-on .ai-panel { display: flex; }
 /* 头部（含会话状态徽标：空闲/实现中/完毕） */
 .ai-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px 10px;
+  padding: 14px 16px 12px;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--card-border);
 }
 .ai-head-title { font-size: 15px; font-weight: 600; flex: 1; }
 .ai-status {
@@ -548,7 +604,7 @@ body.ai-panel-on .toolbar { right: 372px; }
   gap: 4px;
   padding: 0 10px;
   flex-shrink: 0;
-  max-height: 220px;
+  max-height: min(220px, 30vh);
   overflow-y: auto;
 }
 .ai-app {
@@ -752,11 +808,11 @@ body.ai-panel-on .toolbar { right: 372px; }
 .sys-panel {
   position: fixed;
   top: 56px;             /* 让位顶部书签栏 */
-  left: 24px;
-  bottom: 24px;
-  width: 300px;
+  left: var(--panel-edge);
+  bottom: var(--panel-edge);
+  width: var(--sys-w);
   z-index: 40;
-  display: flex;
+  display: none;         /* 由 body.sys-panel-on 打开，避免 JS 未加载时闪出 */
   flex-direction: column;
   background: var(--card);
   border: 1px solid var(--card-border);
@@ -766,28 +822,16 @@ body.ai-panel-on .toolbar { right: 372px; }
   -webkit-backdrop-filter: blur(16px) saturate(1.2);
   overflow: hidden;
 }
-/* 网格让位（左 300 + 24 + 20 = 344；右侧 AI 面板同时存在时收窄更多） */
-body.sys-panel-on .grid { max-width: 792px; }
-body.sys-panel-on.ai-panel-on .grid { max-width: 780px; }
-@media (min-width: 1500px) {
-  body.sys-panel-on .grid,
-  body.sys-panel-on.ai-panel-on .grid { max-width: 1180px; }
-}
-/* 工具条再左移避开左侧面板（宽屏时贴右栏左侧不变） */
-body.sys-panel-on .toolbar { left: 340px; right: auto; }
-body.sys-panel-on.ai-panel-on .toolbar { left: auto; right: 372px; }
-@media (min-width: 1500px) {
-  body.sys-panel-on .toolbar { left: auto; right: 24px; }
-  body.sys-panel-on.ai-panel-on .toolbar { left: auto; right: 372px; }
-}
+body.sys-panel-on .sys-panel { display: flex; }
 
 /* 头部（含在线呼吸点） */
 .sys-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px 10px;
+  padding: 14px 16px 12px;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--card-border);
 }
 .sys-head-title { font-size: 15px; font-weight: 600; flex: 1; }
 .sys-head-dot {
@@ -884,4 +928,76 @@ body.sys-panel-on.ai-panel-on .toolbar { left: auto; right: 372px; }
   color: var(--muted);
   line-height: 1.6;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- 整体布局：停靠面板让位 / 窄屏抽屉 / 工具条跟随 ---- */
+/* 网格在左右面板之间居中：只有停靠态才收窄，抽屉态保持整宽 */
+body.sys-panel-on:not(.panels-overlay) .grid-shell {
+  padding-left: calc(var(--sys-w) + var(--panel-edge) + var(--panel-gap));
+}
+body.ai-panel-on:not(.panels-overlay) .grid-shell {
+  padding-right: calc(var(--ai-w) + var(--panel-edge) + var(--panel-gap));
+}
+/* 工具条始终贴右；只有 AI 面板停靠时才让位，避免历史上左右来回跳 */
+.toolbar {
+  transition: right 0.24s var(--ease), transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+body.ai-panel-on:not(.panels-overlay) .toolbar {
+  right: calc(var(--ai-w) + var(--panel-edge) + 12px);
+}
+
+/* 抽屉态：面板浮在网格上方，带遮罩；一次只开一个 */
+body.panels-overlay .sys-panel,
+body.panels-overlay .ai-panel {
+  top: 56px;
+  bottom: 16px;
+  width: min(var(--sys-w), calc(100vw - 32px));
+  z-index: 60;
+  box-shadow: var(--shadow-lift), var(--edge);
+}
+body.panels-overlay .sys-panel {
+  left: 12px;
+  animation: panel-in-left 0.22s var(--ease);
+}
+body.panels-overlay .ai-panel {
+  right: 12px;
+  width: min(var(--ai-w), calc(100vw - 32px));
+  animation: panel-in-right 0.22s var(--ease);
+}
+@keyframes panel-in-left {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes panel-in-right {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+/* 抽屉打开时锁住背景滚动，并临时收起工具条（用面板内 ✕ / 遮罩 / Esc 关闭） */
+body.panels-overlay.panel-open { overflow: hidden; }
+body.panels-overlay.panel-open .toolbar { display: none; }
+.panel-close { display: none; }
+body.panels-overlay .panel-close { display: flex; }
+.panel-close:hover { color: var(--danger) !important; }
+
+.panel-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(8, 10, 14, 0.42);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+body[data-theme="light"] .panel-scrim { background: rgba(15, 23, 42, 0.18); }
+
+@media (max-width: 640px) {
+  :root { --page-gutter: 16px; }
+  .bm-bar { padding: 0 12px; }
+}
+
+/* 面板滚动区：滚动条占位稳定，滚轮不把页面一起带走 */
+.ai-app-list,
+.ai-session,
+.sys-metrics {
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }

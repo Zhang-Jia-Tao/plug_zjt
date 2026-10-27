@@ -27,11 +27,12 @@
   </aside>
 
   <!-- 系统资源监视面板（左侧常驻，与右侧 AI 管理器对称，host sysmon 轮询驱动） -->
-  <aside id="sys-panel" class="sys-panel">
+  <aside id="sys-panel" class="sys-panel" aria-label="系统资源" aria-hidden="true">
     <div class="sys-head">
       <span class="sys-head-title">系统资源</span>
       <span class="sys-head-dot" id="sys-live" title="数据实时"></span>
-      <button id="sys-refresh" class="sys-head-btn" title="刷新资源数据">⟳</button>
+      <button id="sys-refresh" class="sys-head-btn" title="刷新资源数据" aria-label="刷新资源数据">⟳</button>
+      <button id="sys-close" class="sys-head-btn panel-close" title="关闭系统面板" aria-label="关闭系统面板">✕</button>
     </div>
     <div id="sys-metrics" class="sys-metrics">
       <!-- 由 JS 渲染：CPU/内存/GPU/交换/磁盘 占比条 + 走势 + 温度 -->
@@ -39,11 +40,12 @@
   </aside>
 
   <!-- AI 应用管理器（右侧固定栏，Native Messaging host 驱动，常驻显示） -->
-  <aside id="ai-panel" class="ai-panel">
+  <aside id="ai-panel" class="ai-panel" aria-label="AI 管理器" aria-hidden="true">
     <div class="ai-head">
       <span class="ai-head-title">AI 管理器</span>
       <span id="ai-status" class="ai-status">空闲</span>
-      <button id="ai-refresh" class="ai-head-btn" title="刷新状态">⟳</button>
+      <button id="ai-refresh" class="ai-head-btn" title="刷新状态" aria-label="刷新 AI 状态">⟳</button>
+      <button id="ai-close" class="ai-head-btn panel-close" title="关闭 AI 面板" aria-label="关闭 AI 面板">✕</button>
     </div>
     <div id="ai-banner" class="ai-banner hidden"></div>
     <div id="ai-app-list" class="ai-app-list">
@@ -58,20 +60,32 @@
     </div>
   </aside>
 
+  <!-- 抽屉态遮罩：点空白关闭浮层面板 -->
+  <div id="panel-scrim" class="panel-scrim hidden" aria-hidden="true"></div>
+
   <!-- 右上角工具条（SVG 图标） -->
-  <div class="toolbar">
-    <button id="btn-edit" class="tool-btn" title="编辑布局">
+  <div class="toolbar" role="toolbar" aria-label="页面工具">
+    <button id="btn-sys" class="tool-btn" title="显示/隐藏系统资源面板" aria-label="显示或隐藏系统资源面板" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+    </button>
+    <button id="btn-ai" class="tool-btn" title="显示/隐藏 AI 管理器" aria-label="显示或隐藏 AI 管理器" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"/><path d="M19 15l.7 2.1L22 18l-2.3.9L19 21l-.7-2.1L16 18l2.3-.9Z"/></svg>
+    </button>
+    <span class="tool-sep" aria-hidden="true"></span>
+    <button id="btn-edit" class="tool-btn" title="编辑布局" aria-label="编辑布局">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
     </button>
-    <button id="btn-settings" class="tool-btn" title="设置">
+    <button id="btn-settings" class="tool-btn" title="设置" aria-label="打开设置">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
     </button>
   </div>
 
-  <!-- 小组件网格 -->
-  <main id="grid" class="grid">
-    <!-- widget 卡片由 JS 注入 -->
-  </main>
+  <!-- 小组件网格：外层负责左右让位，内层按可用宽度自适应列数 -->
+  <div class="grid-shell">
+    <main id="grid" class="grid">
+      <!-- widget 卡片由 JS 注入 -->
+    </main>
+  </div>
 
   <!-- 编辑模式提示条 -->
   <div id="edit-hint" class="edit-hint hidden">
@@ -80,11 +94,11 @@
   </div>
 
   <!-- 设置面板（覆盖层） -->
-  <div id="settings" class="settings hidden">
+  <div id="settings" class="settings hidden" role="dialog" aria-modal="true" aria-label="设置" aria-hidden="true">
     <div class="settings-card">
       <div class="settings-head">
         <span>设置</span>
-        <button id="settings-close" class="tool-btn" title="关闭">✕</button>
+        <button id="settings-close" class="tool-btn" title="关闭" aria-label="关闭设置">✕</button>
       </div>
 
       <div class="settings-section">
@@ -114,6 +128,19 @@
           <span>自定义颜色</span>
           <input id="s-bg-custom" type="color" value="#1e2129" />
         </label>
+      </div>
+
+      <div class="settings-section">
+        <h4>布局</h4>
+        <label class="settings-row">
+          <span>系统资源面板</span>
+          <input id="s-show-sys" type="checkbox" />
+        </label>
+        <label class="settings-row">
+          <span>AI 管理器</span>
+          <input id="s-show-ai" type="checkbox" />
+        </label>
+        <p class="settings-tip">宽屏停靠，窄屏以抽屉打开；关闭后仍可用右上角工具条重新打开。</p>
       </div>
 
       <div class="settings-section">

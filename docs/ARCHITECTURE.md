@@ -42,7 +42,11 @@
 ### 2.2 新标签页扩展（`newtab/`）
 
 - **页面**：`index.html` + `js/main.js` 启动；`grid.js` 渲染 widget；`aimanager.js` / `sysmonitor.js`
-  是固定面板；`bookmarksbar.js` 读书签。
+  是左右面板；`bookmarksbar.js` 读书签。
+- **布局**：`.grid-shell` 负责为停靠面板让位，网格用容器查询按“可用宽度”换列；
+  `layout.js` 判断面板停靠/抽屉，`main.js` 统一维护 `body.panels-overlay` / `panel-open` /
+  `sys-panel-on` / `ai-panel-on`。`< 1024px` 全部抽屉，`1024–1279px` 双面板时抽屉，
+  `≥ 1280px` 停靠；面板开关偏好存 `settings.showSysPanel/showAiPanel`，窄屏未打开的面板惰性初始化。
 - **Service Worker**：`background.js` 是目录树/剪贴板/音乐/书签跳转的路由中心，并维护
   `connectNative('ai_manager_host')` 长连接。
 - **状态**：`js/store.js` 单键 `newtab_state`，整体读写；`schemaVersion` 负责迁移。
@@ -161,7 +165,7 @@ notionPush
 
 `newtab_state = { settings, widgets }`：
 
-- `settings`：`theme`、`bgColor`、`stickyExtId`、`schemaVersion`。
+- `settings`：`theme`、`bgColor`、`stickyExtId`、`showSysPanel`、`showAiPanel`、`schemaVersion`。
 - `widgets`：`{id, key, size, data}` 数组；`data` 由各 widget 自定义。
 - `SCHEMA_VERSION = 8`；迁移只追加/改默认值，不重排用户布局。
   - v7 → v8：追加 `focusTimer`（番茄钟）。

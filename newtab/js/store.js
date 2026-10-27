@@ -24,6 +24,8 @@ export const DEFAULT_STATE = {
     theme: 'light',         // 'dark' | 'light'（底层画布默认白色）
     stickyExtId: '',        // 便利贴扩展 ID（跨扩展联动）
     bgColor: 'default',     // 背景色：'default' 跟随主题，或十六进制色值
+    showSysPanel: true,     // 左侧系统资源面板是否停靠（窄屏改为抽屉）
+    showAiPanel: true,      // 右侧 AI 管理器是否停靠（窄屏改为抽屉）
     schemaVersion: SCHEMA_VERSION,
   },
   widgets: [

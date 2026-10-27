@@ -25,9 +25,12 @@ install-host.bat <本扩展ID>
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-- 左栏/右栏是 `position: fixed` 的常驻面板，网格通过 `body.sys-panel-on` / `body.ai-panel-on` 让位。
-- 网格默认 4 列，宽度随面板开关调整；支持拖拽排序、尺寸切换（S/M/L）、编辑模式删除。
-- 设置面板：主题、背景色、每实例配置、添加/删除组件、恢复默认。
+- 左栏/右栏是 `position: fixed` 的停靠面板，网格外层 `.grid-shell` 通过 `--sys-w` / `--ai-w` 计算左右让位；工具条也只在 AI 面板停靠时左移，避免来回跳。
+- 工具条新增两个面板开关，偏好保存在 `settings.showSysPanel` / `settings.showAiPanel`。窄屏自动改为抽屉：`< 1024px` 无论开几个面板都收起；`1024–1279px` 仅当两个面板同时开启时收起；`≥ 1280px` 双面板停靠。抽屉带遮罩，点空白、面板内 ✕ 或 Esc 关闭，一次只开一个。
+- 网格列数由可用宽度决定（容器查询）：`> 1100px` 4 列、`> 700px 且 ≤ 1100px` 3 列、`> 480px 且 ≤ 700px` 2 列、`≤ 480px` 1 列。S/M/L 在各档下分别按 1/2/全宽等比降级，3 列布局用 6 条底层轨道保证两个 M 卡正好拼满一行。
+- 面板按需初始化：窄屏未打开过的 AI/系统面板不会建立 Native Messaging 订阅，打开时才加载。
+- 支持拖拽排序、尺寸切换（S/M/L）、编辑模式删除。
+- 设置面板：主题、背景色、左右面板开关、每实例配置、添加/删除组件、恢复默认；小屏下设置行改为纵向排列，标题吸顶。
 
 ## 小组件
 
@@ -82,6 +85,7 @@ export default {
 - `migrateState()` 按版本递增补默认组件/改默认值，不改变用户已有布局顺序。
 - v7 → v8 追加 `focusTimer`；已有 v8 不重复迁移。
 - `settings.stickyExtId` 保存便利贴扩展 ID，供任务/提醒联动。
+- `settings.showSysPanel` / `settings.showAiPanel` 保存宽屏停靠偏好；窄屏抽屉是临时态，不写入这两个字段。
 
 ## AI 应用管理器
 
@@ -160,7 +164,8 @@ newtab/
 │   ├── tree.css             # 目录树
 │   └── widgets.css          # 各小组件样式
 ├── js/
-│   ├── main.js              # 启动/设置/主题
+│   ├── main.js              # 启动/设置/主题/面板停靠与抽屉
+│   ├── layout.js            # 纯布局断点判定（可单测）
 │   ├── store.js             # 状态读写 + 迁移
 │   ├── grid.js              # 网格渲染/拖拽/尺寸
 │   ├── aimanager.js         # AI 面板
@@ -185,6 +190,9 @@ node scripts/check.mjs
 
 # 番茄钟/迁移回归
 node tests/focus-timer.test.mjs
+
+# 面板停靠/抽屉断点回归
+node tests/panel-layout.test.mjs
 ```
 
 ## 常见问题
