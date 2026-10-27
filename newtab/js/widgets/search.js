@@ -37,6 +37,8 @@ export default {
   ],
 
   init(container, data, api) {
+    // 品牌图标浮出卡片上缘（脱离搜索框组件范围）：该卡片放行 overflow 裁剪
+    container.parentElement.classList.add('widget-search');
     const el = document.createElement('form');
     el.className = 'search-widget';
     el.innerHTML = `

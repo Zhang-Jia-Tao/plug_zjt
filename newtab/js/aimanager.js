@@ -1,16 +1,17 @@
 // aimanager.js — 右侧固定 AI 应用管理面板
 // 依赖本地伴侣程序 ai_manager_host（Native Messaging，需先 install-host.bat 安装）。
 // 数据链路：本页 --runtime.connect--> SW --connectNative--> host；
-// host 推送 apps / message / dialog 事件经 SW 广播回本页。
+// host 推送 apps / message / dialog / session 事件经 SW 广播回本页。
 // 弹窗确认/否认：ai:respond 发给 SW → host 遥控点击白名单进程的弹窗按钮。
+// UI 结构：应用列表 + 弹窗通知 + 会话统计卡（不渲染完整对话历史）。
 
 // 官方品牌图标（simple-icons 单路径 SVG，currentColor 填充随主题变色）
 const APP_ICONS = {
   'claude-code': 'img/apps/claude.svg',
-  'ollama': 'img/apps/ollama.svg',
-  'lmstudio': 'img/apps/lmstudio.svg',
+  codex: 'img/apps/chatgpt.svg',
+  ollama: 'img/apps/ollama.svg',
+  lmstudio: 'img/apps/lmstudio.svg',
   'claude-desktop': 'img/apps/claude-desktop.svg',
-  'chatgpt': 'img/apps/chatgpt.svg',
   cursor: 'img/apps/cursor.svg',
 };
 
@@ -25,22 +26,17 @@ function appIconHtml(id) {
 
 let port = null;           // 到 SW 的订阅连接
 let apps = [];             // [{id,name,status,detail}]
-let messages = [];         // 最近消息（host snapshot + 增量）
+let sessions = [];         // [{app,id,project,model,sumIn,sumCacheRead,sumOut,turns,lastTs}]
 const dialogs = new Map(); // id → dialog 对象
-let activeApp = null;      // 当前查看消息流的应用（null = 总览）
-
-// 会话状态：'idle' 空闲 / 'tasking' 实现中 / 'done' 完毕（任务结束后保持，收到新 user 消息回到 tasking）
-let sessionState = 'idle';
-let lastDoneAt = 0;        // 上次「完毕」时间戳（判定新会话开始：完毕超过 5 分钟后新 user 消息 → 新会话）
-let messagesRendered = 0;  // 已渲染进消息流的消息数（增量渲染用）
-let renderedFeedApp = undefined; // 消息流当前筛选的应用（undefined=未渲染过）
+// 各应用会话状态（head 徽标用）：app → 'idle' | 'tasking' | 'done'
+const sessionStates = { 'claude-code': 'idle', codex: 'idle' };
 
 export function initAiManager() {
   const panel = document.getElementById('ai-panel');
   if (!panel) return;
   document.body.classList.add('ai-panel-on');
-  render();          // 先画骨架（未连接态）
-  renderStreamFull();
+  render();
+  renderSessionStats();
   connect();         // 常驻面板：加载即连接
 }
 
@@ -71,20 +67,21 @@ function onEvent(ev) {
     case 'snapshot':
       reconnectDelay = 1000; // 收到数据说明链路健康，重置退避
       apps = ev.apps || [];
-      messages = ev.messages || [];
       for (const d of (ev.dialogs || [])) dialogs.set(d.id, d);
-      syncSessionStateFromMessages();
+      // 快照内消息只驱动会话状态机（不渲染历史）
+      for (const app of Object.keys(sessionStates)) sessionStates[app] = 'idle';
+      for (const m of (ev.messages || [])) updateSessionState(m);
+      sessions = ev.sessions || sessions;
       hideBanner();
-      renderStreamFull(); // 快照整体替换消息流
       break;
     case 'apps':
       apps = ev.apps || apps;
       break;
     case 'message':
-      messages.push(ev);
-      if (messages.length > 400) messages.splice(0, messages.length - 400);
-      updateSessionState(ev);
-      renderStreamAppend(ev); // 增量插入，不全量重画
+      updateSessionState(ev); // 实时消息只更新状态徽标
+      break;
+    case 'session':
+      sessions = ev.sessions || [];
       break;
     case 'dialog':
       dialogs.set(ev.id, ev);
@@ -104,35 +101,39 @@ function onEvent(ev) {
   render();
 }
 
-// ---- 会话状态机 ----
+// ---- 会话状态机（按 app 分别维护：claude-code / codex） ----
 // tasking：收到 assistant 消息（AI 正在产出）或新会话的 user 消息
-// done：收到 host 的 result 完成事件（done:true）
-// 判定基准统一用消息时间戳（host 的 ts），不受页面打开时机影响：
-// snapshot 回放和实时推送走同一条 updateSessionState，行为一致。
+// done：收到 host 的完成事件（done:true）
+// 判定基准统一用消息内容，snapshot 回放和实时推送走同一条 updateSessionState。
 function updateSessionState(msg) {
-  if (msg.app !== 'claude-code') return;
+  const state = sessionStates[msg.app];
+  if (state === undefined) return; // 无会话状态语义的应用（ollama 等在线/离线即足够）
   if (msg.done) {
-    sessionState = 'done';
-    lastDoneAt = Date.now();
+    sessionStates[msg.app] = 'done';
   } else if (msg.role === 'user') {
-    // user 消息在「完毕」之后 = 新一轮任务开始（Claude Code 终端会话持续存在，
+    // user 消息在「完毕」之后 = 新一轮任务开始（终端/桌面会话持续存在，
     // user 只出现在任务真正下发的时刻，无需 5 分钟窗口）
-    if (sessionState !== 'tasking') sessionState = 'tasking';
+    if (state !== 'tasking') sessionStates[msg.app] = 'tasking';
   } else if (msg.role === 'assistant') {
-    // assistant 产出中；若上一状态已是 done，说明 result 之后又来新输出（新任务开始）
-    sessionState = 'tasking';
+    // assistant 产出中；若上一状态已是 done，说明完成之后又来新输出（新任务开始）
+    sessionStates[msg.app] = 'tasking';
   }
 }
 
-// snapshot 回放：按时间顺序扫历史消息，最终状态即当前状态
-function syncSessionStateFromMessages() {
-  sessionState = 'idle';
-  lastDoneAt = 0;
-  for (const m of messages) updateSessionState(m);
+// head 徽标聚合：任一应用在产出即「实现中」，否则任一刚完成即「完毕」，否则「空闲」
+function statusText() {
+  const states = Object.values(sessionStates);
+  if (states.includes('tasking')) return '实现中';
+  if (states.includes('done')) return '完毕';
+  return '空闲';
 }
 
-function statusText() {
-  return sessionState === 'tasking' ? '实现中' : sessionState === 'done' ? '完毕' : '空闲';
+// 徽标样式 class 与聚合状态对应（idle 淡色、tasking 主题色、done 强调色）
+function statusClassOf() {
+  const states = Object.values(sessionStates);
+  if (states.includes('tasking')) return 'tasking';
+  if (states.includes('done')) return 'done';
+  return 'idle';
 }
 
 function showBanner(text) {
@@ -145,26 +146,26 @@ function hideBanner() {
 }
 
 // ---- 渲染 ----
-// 增量策略：sessionState 变化才重画头部状态/运行条；应用列表按 apps 引用变化重画；
-// 消息流只在「新消息到达」时插入一条 DOM 节点（避免每秒全量 innerHTML 重建 80 条卡片）。
+// 增量策略：会话状态变化才重画状态徽标；应用列表按 apps 引用变化重画；
+// 会话统计只在 stats 引用/内容变化时重画（host 推 session 事件节流）。
 let lastAppsRef = null;
-let lastSessionState = null;
+let lastStatusText = null;
+let lastStatsJson = '';
 
 function render() {
   const list = document.getElementById('ai-app-list');
-  const stream = document.getElementById('ai-stream');
   const dlgList = document.getElementById('ai-dialog-list');
-  if (!list || !stream) return;
+  if (!list) return;
 
-  // 头部状态徽标 + 运行条：状态变化才更新
-  if (sessionState !== lastSessionState) {
-    lastSessionState = sessionState;
+  // 头部状态徽标：聚合状态文本变化才更新
+  const text = statusText();
+  if (text !== lastStatusText) {
+    lastStatusText = text;
     const status = document.getElementById('ai-status');
     if (status) {
-      status.textContent = statusText();
-      status.className = 'ai-status ' + sessionState;
+      status.textContent = text;
+      status.className = 'ai-status ' + statusClassOf();
     }
-    setRunbar();
   }
 
   // 应用列表：apps 数组引用变化才重画（host 只在状态变化时才发新数组）
@@ -173,14 +174,14 @@ function render() {
     list.innerHTML = apps.length === 0
       ? '<div class="ai-empty">等待主机上报…<br/>若长时间无响应，请确认已运行 install-host.bat</div>'
       : apps.map(a => `
-        <button class="ai-app ${a.status} ${activeApp === a.id ? 'active' : ''}" data-app="${a.id}">
+        <div class="ai-app ${a.status}">
           ${appIconHtml(a.id)}
           <span class="ai-app-info">
             <span class="ai-app-name">${escapeHtml(a.name)}</span>
             <span class="ai-app-detail">${escapeHtml(a.detail || '')}</span>
           </span>
           <span class="ai-app-dot" title="${a.status}"></span>
-        </button>
+        </div>
       `).join('');
   }
 
@@ -199,72 +200,70 @@ function render() {
         </div>
       `).join('');
   }
+
+  renderSessionStats();
 }
 
-// 全量重画消息流（snapshot 到达 / 切换应用筛选时用）
-function renderStreamFull() {
-  const stream = document.getElementById('ai-stream');
-  if (!stream) return;
-  const feed = activeApp ? messages.filter(m => m.app === activeApp) : messages;
-  const tail = feed.slice(-80).reverse();
-  stream.innerHTML = runbarHtml()
-    + (tail.length === 0
-      ? '<div class="ai-empty">暂无消息</div>'
-      : tail.map(m => msgHtml(m)).join(''));
-  stream.scrollTop = 0; // 最新消息在顶部
-  messagesRendered = messages.length;
-  renderedFeedApp = activeApp;
+// ---- 会话统计（多会话列表，替代完整对话历史） ----
+// 同模型的不同会话按「项目目录 + 会话短 id + 最近请求」区分，最新在前。
+// token 数值格式化：千位以上显示 k（1.2k），百万显示 M
+function fmtTokens(n) {
+  if (typeof n !== 'number' || Number.isNaN(n)) return '--';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+  return String(n);
 }
 
-// 增量插入一条消息（新 message 事件到达时用：只 prepend 一个节点）
-function renderStreamAppend(msg) {
-  const stream = document.getElementById('ai-stream');
-  if (!stream) return;
-  if (activeApp && msg.app !== activeApp) return; // 当前筛选下不显示
-  // 清掉空态占位
-  const empty = stream.querySelector('.ai-empty');
-  if (empty) empty.remove();
-  const node = document.createElement('div');
-  node.innerHTML = msgHtml(msg);
-  stream.insertBefore(node.firstElementChild, anchorAfterRunbar(stream));
-  // 超出 80 条移除最旧（尾部）
-  const msgs = stream.querySelectorAll('.ai-msg');
-  if (msgs.length > 80) msgs[msgs.length - 1].remove();
-  stream.scrollTop = 0;
+// 最近请求时间：host 的 ISO 时间戳 → 相对时间（刚刚 / N 分钟前 / HH:MM）
+function fmtLastRequest(iso) {
+  if (!iso) return '--';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '--';
+  const diff = Date.now() - t;
+  if (diff < 60e3) return '刚刚';
+  if (diff < 60 * 60e3) return `${Math.floor(diff / 60e3)} 分钟前`;
+  if (diff < 24 * 60 * 60e3) return `${Math.floor(diff / 3.6e6)} 小时前`;
+  return new Date(t).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-// 运行条之后插入（运行条吸顶永远第一）
-function anchorAfterRunbar(stream) {
-  const runbar = stream.querySelector('.ai-runbar');
-  return runbar ? runbar.nextSibling : stream.firstChild;
-}
+function renderSessionStats() {
+  const el = document.getElementById('ai-session');
+  if (!el) return;
+  const json = JSON.stringify(sessions);
+  if (json === lastStatsJson) return; // 内容无变化不重画
+  lastStatsJson = json;
 
-function runbarHtml() {
-  return sessionState === 'tasking'
-    ? '<div class="ai-runbar"><span class="ai-runbar-spinner"></span>实现中…</div>'
-    : sessionState === 'done'
-      ? '<div class="ai-runbar finished">✓ 完毕</div>'
-      : '';
-}
-
-// 更新运行条内容（状态切换时只动这一个节点）
-function setRunbar() {
-  const stream = document.getElementById('ai-stream');
-  if (!stream) return;
-  const old = stream.querySelector('.ai-runbar');
-  if (old) old.remove();
-  if (sessionState === 'idle') return;
-  stream.insertAdjacentHTML('afterbegin', runbarHtml());
-}
-
-function msgHtml(m) {
-  return `
-    <div class="ai-msg role-${m.role} ${m.done ? 'done' : ''}">
-      <span class="ai-msg-app">${escapeHtml(appName(m.app))}</span>
-      ${m.done ? '<span class="ai-msg-done">✓ 完成</span>' : ''}
-      <div class="ai-msg-text">${escapeHtml(m.text)}</div>
+  if (sessions.length === 0) {
+    el.innerHTML = '<div class="ai-session-empty">暂无会话数据</div>';
+    return;
+  }
+  el.innerHTML = sessions.map((s, i) => `
+    <div class="ai-session-card ${i === 0 ? 'active' : ''}">
+      <div class="ai-session-head">
+        <span class="ai-session-title" title="${escapeAttr(s.id)}">${escapeHtml(s.project || '未知项目')}</span>
+        <span class="ai-session-app">${escapeHtml(s.app === 'codex' ? 'ChatGPT' : 'Claude')}</span>
+        <span class="ai-session-model">${escapeHtml(s.model || '未知模型')}</span>
+      </div>
+      <div class="ai-session-grid">
+        <div class="ai-session-cell">
+          <span class="ai-session-num">${fmtTokens((s.sumIn || 0) + (s.sumCacheRead || 0))}</span>
+          <span class="ai-session-label">输入</span>
+        </div>
+        <div class="ai-session-cell">
+          <span class="ai-session-num">${fmtTokens(s.sumOut)}</span>
+          <span class="ai-session-label">输出</span>
+        </div>
+        <div class="ai-session-cell">
+          <span class="ai-session-num">${typeof s.turns === 'number' ? s.turns : '--'}</span>
+          <span class="ai-session-label">轮次</span>
+        </div>
+      </div>
+      <div class="ai-session-foot">
+        <span class="ai-session-last">${fmtLastRequest(s.lastTs)}</span>
+        <span class="ai-session-id">${escapeHtml((s.id || '').slice(0, 8))}</span>
+      </div>
     </div>
-  `;
+  `).join('');
 }
 
 function appName(id) {
@@ -274,14 +273,6 @@ function appName(id) {
 
 // ---- 交互（事件委托，渲染后不用重挂） ----
 document.addEventListener('click', (e) => {
-  // 切换应用筛选
-  const appBtn = e.target.closest('.ai-app');
-  if (appBtn) {
-    activeApp = activeApp === appBtn.dataset.app ? null : appBtn.dataset.app;
-    render();          // 应用列表高亮更新
-    renderStreamFull(); // 消息流按新筛选全量重画
-    return;
-  }
   // 弹窗按钮 → 确认/否认
   const btn = e.target.closest('.ai-dialog-btn');
   if (btn) {

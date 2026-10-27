@@ -5,7 +5,7 @@ const KEY = 'newtab_state';
 
 // 状态结构版本号：新增默认组件等增量变更时 +1，
 // 并在 migrateState 中补对应迁移逻辑（老用户自动升级，不动其已排好的布局）
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 // 预置背景色（设置面板可选）
 export const BG_PRESETS = [
@@ -21,7 +21,7 @@ export const BG_PRESETS = [
 
 export const DEFAULT_STATE = {
   settings: {
-    theme: 'dark',          // 'dark' | 'light'
+    theme: 'light',         // 'dark' | 'light'（底层画布默认白色）
     stickyExtId: '',        // 便利贴扩展 ID（跨扩展联动）
     bgColor: 'default',     // 背景色：'default' 跟随主题，或十六进制色值
     schemaVersion: SCHEMA_VERSION,
@@ -114,6 +114,10 @@ function migrateState(state) {
     for (const w of migrated.widgets) {
       if (w.key === 'music' && w.size === 'l') w.size = 'm';
     }
+  }
+  // v6 -> v7：页面底层画布由深色改为白色（默认主题切换为浅色，设置面板仍可切回深色）
+  if (version < 7) {
+    migrated.settings.theme = 'light';
   }
   return migrated;
 }

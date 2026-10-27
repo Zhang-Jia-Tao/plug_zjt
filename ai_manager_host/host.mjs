@@ -4,14 +4,16 @@
 // 能力：
 //   1. 进程/HTTP 探测本地 AI 应用运行状态（Ollama、LM Studio、Claude 等）
 //   2. Claude Code 会话日志（~/.claude/projects/*.jsonl）实时消息 + 任务完成事件
-//   3. UIA 枚举白名单进程的模态弹窗（#32770），扩展遥控「确认/否认」
+//   3. Codex（ChatGPT 桌面版）会话日志（~/.codex/sessions/*.jsonl）实时消息 + 任务完成事件
+//   4. UIA 枚举白名单进程的模态弹窗（#32770），扩展遥控「确认/否认」
 // 协议（host → 扩展）：
 //   {type:'apps', apps:[{id,name,status,detail}]}
 //   {type:'message', app, role, text, ts, done}
 //   {type:'dialog', id, app, title, buttons:[{id,label}]}
 //   {type:'dialog:closed', id}
 //   {type:'sys', metrics:{cpu,mem,swap,disk,gpu,cpuTemp,gpuTemp,...}}  ← 系统资源轮询
-//   {type:'snapshot', apps, dialogs, messages}   ← 响应 {type:'query'}
+//   {type:'session', sessions:[{app,id,project,model,sumIn,sumCacheRead,sumOut,turns,lastTs}]} ← 多会话统计（claude-code + codex）
+//   {type:'snapshot', apps, dialogs, messages, stats}   ← 响应 {type:'query'}
 // 协议（扩展 → host）：
 //   {type:'query'} / {type:'dialog:respond', dialogId, buttonId}
 
@@ -50,14 +52,16 @@ function post(obj) {
 // kind: 'http'（API 探测）/ 'log'（日志 adapter）/ 'proc'（纯进程检测）
 const APPS = [
   { id: 'claude-code', name: 'Claude Code', kind: 'log', detail: '会话日志 ~/.claude/projects' },
+  // ChatGPT 桌面版 = OpenAI Codex：日志在 ~/.codex/sessions，进程名 ChatGPT.exe / Codex.exe
+  // （进程只作在线检测；会话 jsonl 在应用退出后仍留存，日志 adapter 自身可判定状态）
+  { id: 'codex', name: 'ChatGPT 桌面版', kind: 'log', procs: ['ChatGPT.exe', 'Codex.exe'], detail: '会话日志 ~/.codex/sessions' },
   { id: 'ollama', name: 'Ollama', kind: 'http', procs: ['ollama.exe'], probe: 'http://127.0.0.1:11434/api/tags', detail: '本地 API :11434' },
   { id: 'lmstudio', name: 'LM Studio', kind: 'http', procs: ['lms.exe'], probe: 'http://127.0.0.1:1234/v1/models', detail: '本地 API :1234' },
   { id: 'claude-desktop', name: 'Claude 桌面版', kind: 'proc', procs: ['claude.exe'] },
-  { id: 'chatgpt', name: 'ChatGPT 桌面版', kind: 'proc', procs: ['chatgpt.exe'] },
 ];
 
 const appStatus = new Map();   // id → 'online' | 'tasking' | 'offline'
-const recent = [];             // 最近消息（snapshot 回放用，上限 300）
+const recent = [];             // 最近消息（快照回放用，上限 50——页面只用于会话状态机，不再渲染历史）
 const openDialogs = new Map(); // hwnd → dialog 对象
 
 // snapshot 字节预算：Chrome 对 host→扩展 单条消息限 1MB，超限会杀死连接。
@@ -75,7 +79,7 @@ function buildSnapshot() {
     used += sz;
     picked.unshift(recent[i]);
   }
-  return { type: 'snapshot', apps: appsPart, dialogs: dialogsPart, messages: picked };
+  return { type: 'snapshot', apps: appsPart, dialogs: dialogsPart, messages: picked, sessions: sessionsList() };
 }
 
 function handleRequest(msg) {
@@ -93,6 +97,195 @@ function handleRequest(msg) {
     default:
       post({ type: 'error', message: `未知请求：${msg && msg.type}` });
   }
+}
+
+// ---------- 会话统计（多会话区分：项目/模型/token/轮次/最近请求） ----------
+// 两个日志源共用一套聚合框架，各自的 jsonl 解析器产出统一 stats 形状（外加 app 字段区分）：
+//   claude-code（~/.claude/projects/<proj>/<id>.jsonl）：
+//     assistant 行带 message.usage（每轮都是全量累计快照，取最后见到的值）
+//     与 message.model；project 取行内 cwd 的目录名。
+//   codex（~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl）：
+//     session_meta 带 session_id/cwd；turn_context 带 model；
+//     token_count.event_msg 带 info.total_token_usage 累计快照；
+//     turns 数 user_message 事件个数。
+// 跟踪最近 24h 有活动的会话（按 mtime 取前 8 个）：mtime 未变的复用缓存统计，
+// 只对增长过的文件重扫（stat 很轻，内容扫描只在变化时发生）。
+const SESSION_WINDOW_MS = 24 * 60 * 60 * 1000;
+const SESSION_MAX = 8;
+let sessionCache = new Map();   // file → {mtimeMs, stats}
+let lastSessionsJson = '';      // 上次推送的序列化（无变化不推）
+
+// 递归收集一个目录树下 24h 内有活动的 .jsonl 候选（浅层目录，手动展开两层）
+function collectJsonlCandidates(root, cutoff, depth = 2) {
+  const out = [];
+  let entries;
+  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return out; }
+  for (const ent of entries) {
+    const full = path.join(root, ent.name);
+    if (ent.isDirectory()) {
+      if (depth > 0) out.push(...collectJsonlCandidates(full, cutoff, depth - 1));
+    } else if (ent.name.endsWith('.jsonl')) {
+      let st;
+      try { st = fs.statSync(full); } catch { continue; }
+      if (st.size > 0 && st.mtimeMs >= cutoff) out.push({ full, mtimeMs: st.mtimeMs });
+    }
+  }
+  return out;
+}
+
+// Claude：projects/<proj>/<id>.jsonl（depth=1 即可覆盖）
+function listClaudeSessions(cutoff) {
+  return collectJsonlCandidates(CLAUDE_DIR, cutoff, 1);
+}
+// Codex：sessions/YYYY/MM/DD/rollout-*.jsonl（depth=3）
+function listCodexSessions(cutoff) {
+  return collectJsonlCandidates(CODEX_DIR, cutoff, 3).filter(c => path.basename(c.full).startsWith('rollout-'));
+}
+
+function listActiveSessions() {
+  const cutoff = Date.now() - SESSION_WINDOW_MS;
+  const cands = [...listClaudeSessions(cutoff), ...listCodexSessions(cutoff)];
+  cands.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return cands.slice(0, SESSION_MAX);
+}
+
+// 解析一个 jsonl，按行结构分发到对应源的解析器
+function scanSessionFile(full) {
+  let text;
+  try { text = fs.readFileSync(full, 'utf8'); } catch { return null; }
+  return full.startsWith(CODEX_DIR) ? scanCodexSession(text) : scanClaudeSession(text);
+}
+
+// ---------- Claude Code 会话统计解析 ----------
+// usage 为「当前累计快照」：同轮多行会重复，直接取最后见到的值（跨轮求和会翻倍）
+function scanClaudeSession(text) {
+  let st = null;
+  let project = '';
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    if (!project && o.cwd) project = path.basename(String(o.cwd));
+    if (o.type === 'assistant' && o.message && o.message.usage) {
+      const u = o.message.usage;
+      if (!st) {
+        st = {
+          app: 'claude-code',
+          id: o.sessionId || '',
+          project: '',
+          model: o.message.model || '',
+          sumIn: 0, sumCacheRead: 0, sumOut: 0,
+          turns: 0, turnIn: 0, turnOut: 0, lastTs: o.timestamp || '',
+        };
+      }
+      st.model = o.message.model || st.model; // 模型可能中途切换，取最新
+      st.sumIn = u.input_tokens || 0;
+      st.sumCacheRead = u.cache_read_input_tokens || 0;
+      st.sumOut = u.output_tokens || 0;
+      st.turns += 1;
+      st.turnIn = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0);
+      st.turnOut = u.output_tokens || 0;
+      st.lastTs = o.timestamp || st.lastTs;
+    }
+  }
+  if (st) {
+    if (!st.id) st.id = '';
+    st.project = project;
+  }
+  return st;
+}
+
+// ---------- Codex（ChatGPT 桌面版）会话统计解析 ----------
+// 行结构 {timestamp, type, payload}：
+//   session_meta → session_id / cwd；turn_context → model；
+//   event_msg{type:'user_message'} → 轮次 +1；
+//   event_msg{type:'token_count'} → info.total_token_usage 全量累计快照（取最后值）
+function scanCodexSession(text) {
+  let st = null;
+  let project = '';
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    const ts = o.timestamp || '';
+    if (ts && (!st || ts > st.lastTs)) {
+      if (st) st.lastTs = ts;
+    }
+    if (o.type === 'session_meta' && o.payload) {
+      project = path.basename(String(o.payload.cwd || ''));
+      if (!st) {
+        st = {
+          app: 'codex',
+          id: o.payload.session_id || '',
+          project: '',
+          model: '',
+          sumIn: 0, sumCacheRead: 0, sumOut: 0,
+          turns: 0, turnIn: 0, turnOut: 0, lastTs: ts,
+        };
+      } else {
+        st.id = st.id || o.payload.session_id;
+      }
+    }
+    if (o.type === 'turn_context' && o.payload && o.payload.model) {
+      if (!st) {
+        st = {
+          app: 'codex', id: '', project: '', model: o.payload.model,
+          sumIn: 0, sumCacheRead: 0, sumOut: 0,
+          turns: 0, turnIn: 0, turnOut: 0, lastTs: ts,
+        };
+      } else {
+        st.model = o.payload.model; // 模型可能中途切换，取最新
+      }
+    }
+    if (o.type === 'event_msg' && o.payload && o.payload.type === 'user_message' && st) {
+      st.turns += 1;
+    }
+    if (o.type === 'event_msg' && o.payload && o.payload.type === 'token_count' && st) {
+      const u = o.payload.info && o.payload.info.total_token_usage;
+      if (u) {
+        // total_token_usage 是会话级累计快照：直接覆盖（同轮重复推送取最后值）
+        st.sumIn = u.input_tokens || 0;
+        st.sumCacheRead = u.cached_input_tokens || 0;
+        st.sumOut = (u.output_tokens || 0) + (u.reasoning_output_tokens || 0);
+        st.turnIn = st.sumIn + st.sumCacheRead;
+        st.turnOut = st.sumOut;
+      }
+    }
+  }
+  if (st) {
+    if (!st.id) st.id = '';
+    st.project = st.project || project;
+  }
+  return st;
+}
+
+// 缓存中的统计按最近请求时间排序（最新在前）
+function sessionsList() {
+  return [...sessionCache.values()]
+    .map(e => e.stats)
+    .sort((a, b) => String(b.lastTs).localeCompare(String(a.lastTs)));
+}
+
+function refreshSessionStats() {
+  try {
+    const cands = listActiveSessions();
+    const next = new Map();
+    for (const c of cands) {
+      const cached = sessionCache.get(c.full);
+      if (cached && cached.mtimeMs === c.mtimeMs) {
+        next.set(c.full, cached); // 未变化，复用缓存
+      } else {
+        const stats = scanSessionFile(c.full);
+        if (stats) next.set(c.full, { mtimeMs: c.mtimeMs, stats });
+      }
+    }
+    sessionCache = next;
+    const json = JSON.stringify(sessionsList());
+    if (json && json !== lastSessionsJson) {
+      lastSessionsJson = json;
+      post({ type: 'session', sessions: sessionsList() });
+    }
+  } catch { /* 会话目录不可读时静默，下轮再试 */ }
 }
 
 // ---------- 进程扫描 ----------
@@ -115,11 +308,14 @@ async function scanProcesses() {
   // Claude Code：命令行含独立 claude 词（CLI 名）
   const claudeCodeRunning = cmdlines.some(c => /(^|[/\\="\s])claude(["\s/\\]|$)/.test(c))
     || names.has('claude.exe') || names.has('claude');
+  // Codex（ChatGPT 桌面版）：ChatGPT.exe 或 Codex.exe
+  const codexRunning = names.has('chatgpt.exe') || names.has('codex.exe');
 
   const next = [];
   for (const app of APPS) {
     let running = false;
-    if (app.kind === 'log') running = claudeCodeRunning;
+    if (app.kind === 'log' && app.id === 'claude-code') running = claudeCodeRunning;
+    else if (app.kind === 'log' && app.id === 'codex') running = codexRunning;
     if (app.procs) running = running || app.procs.some(p => names.has(p.toLowerCase()));
     if (app.kind === 'http') running = running || await probeHttp(app.probe);
     if (running) {
@@ -130,6 +326,7 @@ async function scanProcesses() {
     } else {
       // 进程退出：任务必已结束，同步复位 busy 防止「幽灵 tasking」
       if (app.id === 'claude-code' && busy) { busy = false; appStatus.set('claude-code', 'online'); }
+      if (app.id === 'codex' && codexBusy) { codexBusy = false; appStatus.set('codex', 'online'); }
       next.push({ ...app, status: 'offline' });
     }
   }
@@ -213,6 +410,8 @@ function pollClaudeLog() {
         const ev = parseClaudeLine(line);
         if (ev) emitMessage(ev);
       }
+      // 日志有推进 → 同步刷新会话统计（token/模型随输出实时更新）
+      refreshSessionStats();
     } finally {
       try { fs.closeSync(fd); } catch { /* 已关 */ }
     }
@@ -243,7 +442,7 @@ function parseClaudeLine(line) {
 
 function emitMessage(ev) {
   recent.push(ev);
-  if (recent.length > 300) recent.splice(0, recent.length - 300);
+  if (recent.length > 50) recent.splice(0, recent.length - 50);
   if (ev.app === 'claude-code') {
     // 状态转移：result(done) → 结束；assistant → 任务中；user 只在非任务中时开启新任务
     // （任务中的 user 行是工具结果回传，不改变状态）
@@ -253,6 +452,15 @@ function emitMessage(ev) {
     if (appStatus.get('claude-code') !== (busy ? 'tasking' : 'online')) {
       appStatus.set('claude-code', busy ? 'tasking' : 'online');
       post({ type: 'apps', apps: currentAppsList() }); // 状态变化即时推，不等下轮进程扫描
+    }
+  }
+  if (ev.app === 'codex') {
+    // task_complete(done) → 结束；user_message / agent_message → 任务中
+    if (ev.done) codexBusy = false;
+    else codexBusy = true;
+    if (appStatus.get('codex') !== (codexBusy ? 'tasking' : 'online')) {
+      appStatus.set('codex', codexBusy ? 'tasking' : 'online');
+      post({ type: 'apps', apps: currentAppsList() });
     }
   }
   post({ type: 'message', ...ev });
@@ -273,6 +481,93 @@ function checkBusyWatchdog() {
 // 组装当前应用状态列表（apps 事件与 snapshot 共用）
 function currentAppsList() {
   return APPS.map(app => ({ id: app.id, name: app.name, status: appStatus.get(app.id) || 'offline', detail: app.detail }));
+}
+
+// ---------- Codex（ChatGPT 桌面版）日志 adapter ----------
+// 会话日志：~/.codex/sessions/YYYY/MM/DD/rollout-<date>-<sessionId>.jsonl
+// 行结构 {timestamp, type, payload}，与 Claude 的 tailed adapter 同套路：
+// 找最新 rollout 文件 → 按字节偏移增量读 → 只解析 event_msg 中对 UI 有意义的子集。
+const CODEX_DIR = path.join(os.homedir(), '.codex', 'sessions');
+let codexFile = null;            // 当前跟踪的会话文件
+const codexOffsets = new Map();  // path → 已读字节偏移
+let codexRemainder = '';
+let codexBusy = false;           // codex 任务中
+
+function findNewestCodexSession() {
+  try {
+    let newest = null;
+    for (const cand of collectJsonlCandidates(CODEX_DIR, 0, 3)) {
+      if (!path.basename(cand.full).startsWith('rollout-')) continue;
+      if (!newest || cand.mtimeMs > newest.mtimeMs) newest = cand;
+    }
+    return newest;
+  } catch { return null; }
+}
+
+function pollCodexLog() {
+  try {
+    const cand = findNewestCodexSession();
+    if (cand && (!codexFile || cand.full !== codexFile)) {
+      codexFile = cand.full;
+      codexRemainder = '';
+    }
+    if (!codexFile) return;
+    let fd, st;
+    try {
+      fd = fs.openSync(codexFile, 'r');
+      st = fs.fstatSync(fd);
+    } catch {
+      if (fd) try { fs.closeSync(fd); } catch { /* 已关 */ }
+      return;
+    }
+    try {
+      const offset = codexOffsets.get(codexFile) || 0;
+      if (st.size <= offset) return;
+      const chunk = Buffer.alloc(st.size - offset);
+      fs.readSync(fd, chunk, 0, chunk.length, offset);
+      const text = codexRemainder + chunk.toString('utf8');
+      const lastNl = text.lastIndexOf('\n');
+      if (lastNl < 0) { codexRemainder = text; return; }
+      codexRemainder = text.slice(lastNl + 1);
+      const complete = text.slice(0, lastNl);
+      codexOffsets.set(codexFile, offset + chunk.length);
+      for (const line of complete.split(/\r?\n/)) {
+        const ev = parseCodexLine(line);
+        if (ev) emitMessage(ev);
+      }
+      // 日志有推进 → 同步刷新会话统计（token/模型随输出实时更新）
+      refreshSessionStats();
+    } finally {
+      try { fs.closeSync(fd); } catch { /* 已关 */ }
+    }
+  } catch { /* 单轮失败不影响下轮 */ }
+}
+
+function parseCodexLine(line) {
+  if (!line.trim()) return null;
+  let o;
+  try { o = JSON.parse(line); } catch { return null; }
+  if (o.type !== 'event_msg' || !o.payload) return null;
+  const p = o.payload;
+  const ts = o.timestamp || '';
+  switch (p.type) {
+    case 'user_message': {
+      const text = String(p.message || '').trim();
+      if (!text) return null;
+      return { app: 'codex', role: 'user', text: text.slice(0, 2000), done: false, ts };
+    }
+    case 'agent_message': {
+      const text = String(p.message || '').trim();
+      if (!text) return null;
+      return { app: 'codex', role: 'assistant', text: text.slice(0, 4000), done: false, ts };
+    }
+    case 'task_complete': {
+      const dur = p.duration_ms ? `，耗时 ${Math.round(p.duration_ms / 1000)}s` : '';
+      return { app: 'codex', role: 'system', text: `任务完成${dur}`, done: true, ts };
+    }
+    default:
+      return null; // agent_reasoning / token_count 等只入统计，不进消息流
+  }
 }
 
 // ---------- 弹窗检测（UIA） ----------
@@ -370,9 +665,12 @@ function setSysmonFast(fast) {
 // ——每轮都要拉起 PowerShell（进程开销大），全 .unref() 让空转不阻止退出。
 scanProcesses();
 pollClaudeLog();
+pollCodexLog();
+refreshSessionStats(); // 启动即推一次会话统计（页面打开即有数据）
 pollSysmon();
 setInterval(scanProcesses, 6000).unref();
 setInterval(pollClaudeLog, 1200).unref();
+setInterval(pollCodexLog, 1200).unref();
 setInterval(scanDialogs, 8000).unref(); // 弹窗是低频事件，8s 足够灵敏
 setInterval(checkBusyWatchdog, 30000).unref();
 scheduleSysmon();

@@ -40,7 +40,7 @@
   <!-- AI 应用管理器（右侧固定栏，Native Messaging host 驱动，常驻显示） -->
   <aside id="ai-panel" class="ai-panel">
     <div class="ai-head">
-      <span class="ai-head-title">AI 应用管理器</span>
+      <span class="ai-head-title">AI 管理器</span>
       <span id="ai-status" class="ai-status">空闲</span>
       <button id="ai-refresh" class="ai-head-btn" title="刷新状态">⟳</button>
     </div>
@@ -51,8 +51,9 @@
     <div id="ai-dialog-list" class="ai-dialog-list">
       <!-- 由 JS 渲染：待处理弹窗（确认/否认按钮） -->
     </div>
-    <div id="ai-stream" class="ai-stream">
-      <!-- 由 JS 渲染：实时消息流（顶部状态：实现中 / 完毕） -->
+    <!-- 会话统计卡（替代完整历史消息流）：模型 / 累计 token / 轮次 / 最近请求 -->
+    <div id="ai-session" class="ai-session">
+      <!-- 由 JS 渲染：会话统计 -->
     </div>
   </aside>
 

@@ -5,7 +5,9 @@
 // 历史迷你走势（sparkline）用纯 CSS 柱条，无图表库依赖。
 
 const HISTORY_LEN = 40;        // 走势柱条数
-const history = { cpu: [], mem: [], gpu: [], disk: [] };
+// 注意：键集合必须与 METRICS 的 key 一致（漏一个会让 pushHistory 抛错，
+// 阻断 renderValues，面板永远停在「--」骨架态——已在 swap 上踩过一次）
+const history = { cpu: [], mem: [], gpu: [], swap: [], disk: [] };
 let port = null;
 let lastMetrics = null;
 
@@ -52,8 +54,13 @@ function onEvent(ev) {
   if (!ev || ev.type !== 'sys') return;
   reconnectDelay = 1000; // 收到数据说明链路健康，重置退避
   lastMetrics = ev.metrics || {};
-  pushHistory(lastMetrics);
-  renderValues();
+  try {
+    pushHistory(lastMetrics);
+    renderValues();
+  } catch (e) {
+    // 渲染异常不吞数据：lastMetrics 已存，下一轮 sys 事件会再试
+    console.error('[sysmonitor] render error', e);
+  }
 }
 
 // ---- 渲染 ----
@@ -162,6 +169,8 @@ function renderSpark(key) {
 
 function pushHistory(m) {
   for (const def of METRICS) {
+    // 兜底：history 缺键时自动补数组（防御键集合不同步的问题）
+    if (!Array.isArray(history[def.key])) history[def.key] = [];
     const v = m[def.key];
     const arr = history[def.key];
     arr.push(typeof v === 'number' ? v : 0);

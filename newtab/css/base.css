@@ -618,69 +618,119 @@ body.ai-panel-on .toolbar { right: 372px; }
 .ai-dialog-btn:hover { background: var(--grad-brand); color: #fff; border-color: transparent; }
 .ai-dialog-btn:disabled { opacity: 0.5; cursor: default; }
 
-/* 消息流 */
-.ai-stream {
+/* ---- 会话统计列表（多会话区分，替代完整对话历史流） ---- */
+.ai-session {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 10px 12px;
+  padding: 8px 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.ai-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 16px 8px; line-height: 1.7; }
-.ai-msg {
+.ai-session-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 20px 8px; line-height: 1.7; }
+/* 单个会话卡：标题行 = 项目目录名 + 模型徽标；统计三格 + 底部最近请求 */
+.ai-session-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px;
   border: 1px solid var(--card-border);
-  background: var(--card);
   border-radius: 12px;
-  padding: 8px 10px;
-  font-size: 12px;
-  line-height: 1.6;
+  background: var(--card);
 }
-.ai-msg-app { font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 4px; }
-.ai-msg.role-assistant { border-left: 3px solid var(--primary); }
-.ai-msg.role-user { border-left: 3px solid var(--muted); opacity: 0.85; }
-.ai-msg.role-system { border-left: 3px solid #34a853; background: color-mix(in srgb, #34a853 8%, transparent); }
-.ai-msg.done { border-color: color-mix(in srgb, #34a853 40%, transparent); }
-.ai-msg-done { color: #34a853; font-weight: 600; font-size: 10px; }
-.ai-msg-text { white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow: hidden; }
-
-/* 任务运行中条（流顶部，吸顶常显）：蓝色呼吸，任务完成后变为绿色「完毕」 */
-.ai-runbar {
-  position: sticky;
-  top: -10px;           /* 抵消 .ai-stream 的 padding-top，滚动时贴住面板顶 */
-  z-index: 1;
-  flex-shrink: 0;
-  margin: 8px 12px 0;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--primary);
+/* 最活跃会话（列表第一项）主色描边区分 */
+.ai-session-card.active {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.ai-session-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  background: color-mix(in srgb, var(--primary) 10%, var(--bg));
-  animation: ai-status-pulse 1.2s ease-in-out infinite;
 }
-.ai-runbar .ai-runbar-spinner {
-  width: 10px;
-  height: 10px;
-  border: 2px solid color-mix(in srgb, var(--primary) 35%, transparent);
-  border-top-color: var(--primary);
+.ai-session-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-session-card.active .ai-session-title::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  animation: ai-spin 0.8s linear infinite;
+  background: var(--primary);
+  margin-right: 5px;
+  vertical-align: 1px;
 }
-@keyframes ai-spin { to { transform: rotate(360deg); } }
-.ai-runbar.finished {
-  border-color: color-mix(in srgb, #34a853 45%, transparent);
-  background: color-mix(in srgb, #34a853 10%, var(--bg));
-  color: #34a853;
-  animation: none;
+.ai-session-model {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-.ai-runbar.finished .ai-runbar-spinner { display: none; }
+/* 来源徽标（Claude / ChatGPT）：中性细描边，与模型徽标形成层次 */
+.ai-session-app {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text) 25%, transparent);
+  color: color-mix(in srgb, var(--text) 70%, transparent);
+  flex-shrink: 0;
+}
+/* 三格统计：输入/输出 token + 轮次 */
+.ai-session-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+.ai-session-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 4px 5px;
+  border-radius: 8px;
+  background: var(--card-hover);
+}
+.ai-session-num {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.ai-session-cell:first-child .ai-session-num { color: var(--primary); }
+.ai-session-cell:nth-child(2) .ai-session-num { color: var(--accent); }
+.ai-session-label { font-size: 9px; color: var(--muted); }
+/* 底部：最近请求时间 + 会话短 id */
+.ai-session-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.ai-session-last { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-session-id {
+  font-family: Consolas, "Courier New", monospace;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
 
 /* ---- 系统资源监视面板：左侧固定栏（与右侧 AI 管理器对称） ---- */
 .sys-panel {

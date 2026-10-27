@@ -12,15 +12,26 @@
 
 /* ---- 搜索框（仿谷歌首页，精致版） ---- */
 .search-widget {
+  position: relative; /* 品牌图标绝对定位的锚点 */
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
+  /* 仿谷歌首页构图：品牌图标浮在卡片上方，搜索框紧随其下（18px），
+     下方剩余空间留给展开的 AI 入口面板（文档流内生长） */
+  justify-content: flex-start;
+  padding-top: 18px;
   height: 100%;
 }
-/* 品牌图：AI 生成的插件标识，置于搜索框上方 */
+/* 品牌图：AI 生成的插件标识，浮出搜索卡片上缘之外（脱离组件范围）。
+   top 取 -76px：卡片内边距 20px + 图标高 56px，图标底边正好贴住卡片顶边框，
+   落在网格顶部 104px 留白区内（书签栏 44px 之下），不产生任何布局位移。 */
+.widget-search { overflow: visible; }
+.widget-search .widget-body { overflow: visible; }
 .search-brand {
+  position: absolute;
+  top: -76px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -118,9 +129,9 @@
   flex-shrink: 0;
 }
 
-/* AI 查询入口面板（搜索框下方，随卡片高度伸展，不越出卡片） */
+/* AI 查询入口面板（搜索框下方，随卡片剩余空间生长，不越出卡片） */
 .search-ai-panel {
-  margin-top: 10px;
+  margin-top: 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
