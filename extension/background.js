@@ -86,7 +86,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // ---- 外部扩展接入（新标签页等）----
 // 仅放行只读 + 受控写操作；action 白名单防止任意命令执行。
-// externally_connectable 用 matches 通配，安全性靠此白名单约束。
+// externally_connectable 同时放行 ids（扩展接入）与 matches（网页接入），安全性靠白名单约束。
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
   (async () => {
     const ALLOWED = ['getTaskNotes', 'toggleTask', 'getReminders'];

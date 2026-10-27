@@ -32,6 +32,7 @@
   },
   "options_page": "options.html",
   "externally_connectable": {
+    "ids": ["*"],
     "matches": ["*://*/*"],
     "accepts_tls_channel_id": false
   },
