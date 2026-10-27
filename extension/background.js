@@ -86,11 +86,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // ---- 外部扩展接入（新标签页等）----
 // 仅放行只读 + 受控写操作；action 白名单防止任意命令执行。
-// externally_connectable 同时放行 ids（扩展接入）与 matches（网页接入），安全性靠白名单约束。
+// manifest 的 externally_connectable.ids 只允许「可定制新标签页」扩展接入；
+// 这里再按同一份清单校验 sender.id，避免 manifest 配置被放宽后悄悄扩大攻击面。
+function isAllowedExternalSender(sender) {
+  const ids = chrome.runtime.getManifest().externally_connectable?.ids || [];
+  return Boolean(sender && sender.id && ids.includes(sender.id));
+}
+
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
   (async () => {
     const ALLOWED = ['getTaskNotes', 'toggleTask', 'getReminders'];
     try {
+      if (!isAllowedExternalSender(sender)) {
+        sendResponse({ ok: false, message: '来源未授权' });
+        return;
+      }
       if (!msg || !ALLOWED.includes(msg.action)) {
         sendResponse({ ok: false, message: '不允许的操作' });
         return;
@@ -160,22 +170,32 @@ async function handleMessage(msg, sender) {
     }
 
     case 'notionPush': {
-      // 增量推送：先建 id->pageId 映射，再逐条 push
+      // 增量推送：先读 schema 过滤可选列，再建 id->pageId 映射，逐条 push
       const s = await getSettings();
       if (!s.notionToken || !s.notionDatabaseId) throw new Error('未配置 Notion');
+      const schemaRes = await notion.getDatabaseSchema(s.notionToken, s.notionDatabaseId);
+      if (!schemaRes.ok) throw new Error(`读取 Notion 数据库结构失败：${schemaRes.message}`);
+      if (schemaRes.missingRequired.length) {
+        throw new Error(`Notion 数据库缺少必需列：${schemaRes.missingRequired.join('、')}`);
+      }
       const r = await notion.buildIdMap(s.notionToken, s.notionDatabaseId);
       if (!r.ok) throw new Error(r.message);
       const notes = await getAllNotes();
       const map = r.map;
       let pushed = 0, failed = 0;
       for (const n of notes) {
-        const pr = await notion.pushNote(s.notionToken, s.notionDatabaseId, n, map[n.id] || null);
+        const pr = await notion.pushNote(
+          s.notionToken, s.notionDatabaseId, n, map[n.id] || null, schemaRes.schema
+        );
         if (pr.ok) { map[n.id] = pr.pageId; pushed++; }
         else failed++;
         await sleep(350);
       }
       await setSettings({ notionLastSync: new Date().toISOString() });
-      return { pushed, failed, total: notes.length };
+      return {
+        pushed, failed, total: notes.length,
+        missingOptional: schemaRes.missingOptional,
+      };
     }
 
     case 'notionPull': {

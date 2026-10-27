@@ -49,8 +49,16 @@ async function onTest() {
   el.textContent = '测试中…'; el.className = 'value';
   try {
     const r = await send('notionTest');
-    if (r.ok) setResult(el, '✓ 连接成功', true);
-    else setResult(el, '✗ ' + (r.message || '失败'), false);
+    if (r.ok) {
+      let msg = '✓ 连接成功';
+      if (r.warning) msg += `（${r.warning}）`;
+      else if (Array.isArray(r.missingOptional) && r.missingOptional.length) {
+        msg += `（可选列缺失，将跳过：${r.missingOptional.join('、')}）`;
+      }
+      setResult(el, msg, true);
+    } else {
+      setResult(el, '✗ ' + (r.message || '失败'), false);
+    }
   } catch (e) {
     setResult(el, '✗ ' + e.message, false);
   }
@@ -76,11 +84,16 @@ async function onUnbind() {
 
 async function onSyncFolder() {
   const el = $('#folder-sync-result');
+  const ok = confirm(
+    '全量同步会重写便利贴分类目录，并删除其中已不存在的 .md 文件。\n' +
+    '绑定目录中的其他目录、非 .md 文件不会被动。继续？'
+  );
+  if (!ok) return;
   el.textContent = '同步中…'; el.className = 'value';
   const notes = await send('getNotes');
   try {
     const r = await syncFolderAll(notes);
-    if (r.ok) setResult(el, `✓ 已写入 ${r.written}/${r.total}`, true);
+    if (r.ok) setResult(el, `✓ 已写入 ${r.written}/${r.total}，清理 ${r.deleted || 0} 个旧文件`, true);
     else setResult(el, '✗ ' + (r.reason || '失败'), false);
   } catch (e) {
     setResult(el, '✗ ' + e.message, false);

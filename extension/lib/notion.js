@@ -3,14 +3,42 @@
 // 需用户在 options 页配置 notionToken + notionDatabaseId。
 //
 // Notion database 约定列：
-//   Title(title) / Category(select) / Content(rich_text) / URL(url)
-//   / RemindAt(date) / Pinned(checkbox) / NoteID(rich_text, 存本地 id 去重)
+//   必需：Title(title) / Category(select) / Content(rich_text)
+//         / Pinned(checkbox) / NoteID(rich_text, 存本地 id 去重)
+//   可选：URL(url) / RemindAt(date) / Username/Password/Host/Port
+//         / Name/Phone/Email/IDCard/CustomFields（均为 rich_text）
+//
+// 兼容策略：推送前读取 database schema，只写数据库里存在且类型匹配的列；
+// 可选列缺失时自动跳过（不会因用户没建 Username/Password 等列而 400）。
 //
 // API base: https://api.notion.com/v1
 // Header: Authorization: Bearer <token>, Notion-Version: 2022-06-28
 
 const API_BASE = 'https://api.notion.com/v1';
 const NOTION_VERSION = '2022-06-28';
+
+// 列名 → 期望的 Notion 属性类型
+const REQUIRED_PROPERTIES = {
+  Title: 'title',
+  Category: 'select',
+  Content: 'rich_text',
+  Pinned: 'checkbox',
+  NoteID: 'rich_text',
+};
+
+const OPTIONAL_PROPERTIES = {
+  URL: 'url',
+  RemindAt: 'date',
+  Username: 'rich_text',
+  Password: 'rich_text',
+  Host: 'rich_text',
+  Port: 'rich_text',
+  Name: 'rich_text',
+  Phone: 'rich_text',
+  Email: 'rich_text',
+  IDCard: 'rich_text',
+  CustomFields: 'rich_text',
+};
 
 function headers(token) {
   return {
@@ -59,23 +87,61 @@ async function fetchJson(url, opts, { retries = 2, retryDelay = 1200 } = {}) {
   return { ok: false, status: lastErr?.status || 0, body: lastErr?.body };
 }
 
-// 连通性 + 权限测试：查询 database 第一页
+// 读取 database schema：返回 Map<列名, 属性类型>，并列出缺列/类型不符
+export async function getDatabaseSchema(token, databaseId) {
+  const r = await fetchJson(
+    `${API_BASE}/databases/${databaseId}`,
+    { method: 'GET', headers: headers(token) },
+    { retries: 1 }
+  );
+  if (!r.ok) {
+    return { ok: false, message: r.body?.message || `HTTP ${r.status}`, status: r.status };
+  }
+  const schema = new Map();
+  for (const [name, def] of Object.entries(r.body?.properties || {})) {
+    schema.set(name, def?.type || '');
+  }
+  const missingRequired = Object.entries(REQUIRED_PROPERTIES)
+    .filter(([name, type]) => schema.get(name) !== type)
+    .map(([name, type]) => `${name}(${type})`);
+  const missingOptional = Object.entries(OPTIONAL_PROPERTIES)
+    .filter(([name, type]) => schema.get(name) !== type)
+    .map(([name, type]) => `${name}(${type})`);
+  return { ok: true, schema, missingRequired, missingOptional };
+}
+
+// 连通性 + 权限测试：查询 database 第一页，并检查列是否齐全
 export async function testConnection(token, databaseId) {
   const r = await fetchJson(
     `${API_BASE}/databases/${databaseId}/query`,
     { method: 'POST', headers: headers(token), body: JSON.stringify({ page_size: 1 }) },
     { retries: 1 }
   );
-  if (r.ok) return { ok: true };
-  return {
-    ok: false,
-    message: r.body?.message || `HTTP ${r.status}`,
-    status: r.status,
-  };
+  if (!r.ok) {
+    return {
+      ok: false,
+      message: r.body?.message || `HTTP ${r.status}`,
+      status: r.status,
+    };
+  }
+  const schemaRes = await getDatabaseSchema(token, databaseId);
+  if (!schemaRes.ok) {
+    return { ok: true, warning: `连接成功，但读取数据库结构失败：${schemaRes.message}` };
+  }
+  if (schemaRes.missingRequired.length) {
+    return {
+      ok: false,
+      message: `数据库缺少必需列：${schemaRes.missingRequired.join('、')}`,
+      missingRequired: schemaRes.missingRequired,
+    };
+  }
+  return { ok: true, missingOptional: schemaRes.missingOptional };
 }
 
-// 把本地 note 映射成 Notion page properties
-function noteToProperties(note) {
+// 把本地 note 映射成 Notion page properties。
+// schema 为 Map<列名, 类型>；为空时按完整列写入（兼容旧调用/测试）。
+export function buildNoteProperties(note, schema = null) {
+  const canWrite = (name, type) => !schema || schema.get(name) === type;
   const props = {
     Title: { title: [{ text: { content: note.title || '未命名' } }] },
     Category: { select: note.category ? { name: note.category } : null },
@@ -83,22 +149,24 @@ function noteToProperties(note) {
     Pinned: { checkbox: !!note.pinned },
     NoteID: { rich_text: [{ text: { content: note.id } }] },
   };
-  if (note.url) props.URL = { url: note.url };
-  if (note.remindAt) props.RemindAt = { date: { start: note.remindAt } };
-  if (note.username) props.Username = { rich_text: [{ text: { content: note.username } }] };
-  if (note.password) props.Password = { rich_text: [{ text: { content: note.password } }] };
-  if (note.host) props.Host = { rich_text: [{ text: { content: note.host } }] };
-  if (note.port) props.Port = { rich_text: [{ text: { content: note.port } }] };
-  if (note.name) props.Name = { rich_text: [{ text: { content: note.name } }] };
-  if (note.phone) props.Phone = { rich_text: [{ text: { content: note.phone } }] };
-  if (note.email) props.Email = { rich_text: [{ text: { content: note.email } }] };
-  if (note.idCard) props.IDCard = { rich_text: [{ text: { content: note.idCard } }] };
+  if (note.url && canWrite('URL', 'url')) props.URL = { url: note.url };
+  if (note.remindAt && canWrite('RemindAt', 'date')) props.RemindAt = { date: { start: note.remindAt } };
+  if (note.username && canWrite('Username', 'rich_text')) props.Username = { rich_text: [{ text: { content: note.username } }] };
+  if (note.password && canWrite('Password', 'rich_text')) props.Password = { rich_text: [{ text: { content: note.password } }] };
+  if (note.host && canWrite('Host', 'rich_text')) props.Host = { rich_text: [{ text: { content: note.host } }] };
+  if (note.port && canWrite('Port', 'rich_text')) props.Port = { rich_text: [{ text: { content: note.port } }] };
+  if (note.name && canWrite('Name', 'rich_text')) props.Name = { rich_text: [{ text: { content: note.name } }] };
+  if (note.phone && canWrite('Phone', 'rich_text')) props.Phone = { rich_text: [{ text: { content: note.phone } }] };
+  if (note.email && canWrite('Email', 'rich_text')) props.Email = { rich_text: [{ text: { content: note.email } }] };
+  if (note.idCard && canWrite('IDCard', 'rich_text')) props.IDCard = { rich_text: [{ text: { content: note.idCard } }] };
   // 个人信息自定义标签：拼成多行文本存到 CustomFields 列
   const customText = (Array.isArray(note.fields) ? note.fields : [])
     .filter(f => f.label || f.value)
     .map(f => `${f.label}: ${f.value}`)
     .join('\n');
-  if (customText) props.CustomFields = { rich_text: [{ text: { content: customText.slice(0, 2000) } }] };
+  if (customText && canWrite('CustomFields', 'rich_text')) {
+    props.CustomFields = { rich_text: [{ text: { content: customText.slice(0, 2000) } }] };
+  }
   return props;
 }
 
@@ -132,7 +200,7 @@ function pageToNote(page) {
 
 // 推送单条（若该 NoteID 已存在则更新，否则新建）
 // 简化策略：先 query 该 NoteID，命中则 PATCH 更新 properties，否则 POST 新建。
-export async function pushNote(token, databaseId, note, existingPageId = null) {
+export async function pushNote(token, databaseId, note, existingPageId = null, schema = null) {
   const pageId = existingPageId;
   if (pageId) {
     // 更新
@@ -141,7 +209,7 @@ export async function pushNote(token, databaseId, note, existingPageId = null) {
       {
         method: 'PATCH',
         headers: headers(token),
-        body: JSON.stringify({ properties: noteToProperties(note) }),
+        body: JSON.stringify({ properties: buildNoteProperties(note, schema) }),
       },
       { retries: 1 }
     );
@@ -155,7 +223,7 @@ export async function pushNote(token, databaseId, note, existingPageId = null) {
       headers: headers(token),
       body: JSON.stringify({
         parent: { database_id: databaseId },
-        properties: noteToProperties(note),
+        properties: buildNoteProperties(note, schema),
       }),
     },
     { retries: 1 }

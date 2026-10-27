@@ -7,7 +7,7 @@
 // 因此文件读写也放在页面上下文执行（sidepanel/options），background 只做消息路由。
 
 import { idbGet, idbSet, idbDel } from './idb.js';
-import { getCategory } from './categories.js';
+import { getCategory, CATEGORY_MAP } from './categories.js';
 
 const HANDLE_KEY = 'folderHandle';
 
@@ -126,26 +126,37 @@ export async function deleteNoteFile(note) {
   }
 }
 
-// 全量同步：以本地 notes 为准，重写文件夹（删除多余文件、写入缺失文件）
-// 用于"同步到文件夹"按钮或导入恢复后对齐
+// 全量同步：以本地 notes 为准，重写分类目录（删除多余文件、写入缺失文件）
+// 用于"同步到文件夹"按钮或导入恢复后对齐。
+//
+// 安全边界（防止误删用户资料）：
+//   1. 只扫描/清理 categories.js 中定义的分类目录；
+//   2. 只清理文件名形如 UUID.md 的文件（本扩展生成的命名）；
+//   3. 其他目录、非 .md 文件、非 UUID 命名的文件一律不碰。
 export async function syncFolderAll(notes) {
   const handle = await getFolderHandle();
   if (!handle) return { ok: false, reason: '未绑定文件夹' };
   if (!(await ensurePermission(handle))) return { ok: false, reason: '无文件夹权限' };
 
-  // 1. 收集本地应有的文件集合: { "categoryKey/id.md" }
-  const expected = new Set(notes.map(n => `${getCategory(n.category).key}/${n.id}.md`));
-
-  // 2. 遍历已有分类目录与文件，删除不在 expected 中的
+  // 1. 读取已知分类目录中现有的 .md 文件，作为清理计划的输入
+  const existingByDir = new Map();
   for await (const [dirName, dirHandle] of handle.entries()) {
-    if (dirHandle.kind !== 'directory') continue;
+    if (dirHandle.kind !== 'directory' || !CATEGORY_MAP[dirName]) continue;
+    const files = [];
     for await (const [fileName, fileHandle] of dirHandle.entries()) {
-      if (fileHandle.kind !== 'file' || !fileName.endsWith('.md')) continue;
-      const rel = `${dirName}/${fileName}`;
-      if (!expected.has(rel)) {
-        try { await dirHandle.removeEntry(fileName); } catch {}
-      }
+      if (fileHandle.kind === 'file' && fileName.endsWith('.md')) files.push(fileName);
     }
+    existingByDir.set(dirName, files);
+  }
+
+  // 2. 删除扩展自己分类目录中已不存在的 .md（纯函数，便于回归测试）
+  let deleted = 0;
+  for (const { dirName, fileName } of planFolderPrune(notes, existingByDir)) {
+    try {
+      const dir = await handle.getDirectoryHandle(dirName);
+      await dir.removeEntry(fileName);
+      deleted++;
+    } catch {}
   }
 
   // 3. 写入所有 notes
@@ -156,5 +167,36 @@ export async function syncFolderAll(notes) {
       written++;
     } catch {}
   }
-  return { ok: true, written, total: notes.length };
+  return { ok: true, written, total: notes.length, deleted };
+}
+
+// 本扩展写入的文件名：<crypto.randomUUID()>.md
+const NOTE_FILE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.md$/i;
+
+// 期望写入的文件：分类目录 → 文件名集合（只含已知分类）
+export function buildExpectedFileMap(notes) {
+  const map = new Map();
+  for (const n of notes) {
+    const cat = getCategory(n.category);
+    if (!CATEGORY_MAP[cat.key]) continue;
+    if (!map.has(cat.key)) map.set(cat.key, new Set());
+    map.get(cat.key).add(`${n.id}.md`);
+  }
+  return map;
+}
+
+// 纯函数：计算需要删除的文件。existingByDir: Map<目录名, 文件名数组>
+// 未知目录、非 .md、非本扩展命名格式的文件都不在清理范围内。
+export function planFolderPrune(notes, existingByDir) {
+  const expected = buildExpectedFileMap(notes);
+  const deletions = [];
+  for (const [dirName, files] of existingByDir) {
+    if (!CATEGORY_MAP[dirName]) continue;
+    const keep = expected.get(dirName) || new Set();
+    for (const fileName of files) {
+      if (!NOTE_FILE_RE.test(fileName)) continue;
+      if (!keep.has(fileName)) deletions.push({ dirName, fileName });
+    }
+  }
+  return deletions;
 }

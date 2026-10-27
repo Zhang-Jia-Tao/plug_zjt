@@ -32,8 +32,7 @@
   },
   "options_page": "options.html",
   "externally_connectable": {
-    "ids": ["*"],
-    "matches": ["*://*/*"],
+    "ids": ["lpgfnalhjbfdccdgmmhmaacfbmhiaiff"],
     "accepts_tls_channel_id": false
   },
   "icons": {
