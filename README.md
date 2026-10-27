@@ -110,7 +110,7 @@ plug_zjt/
 │   ├── js/
 │   │   ├── main.js          # 启动、设置面板、主题/背景、面板停靠/抽屉
 │   │   ├── layout.js        # 布局断点判定（可单测）
-│   │   ├── store.js         # newtab_state 读写 + schema 迁移（v8）
+│   │   ├── store.js         # newtab_state 读写 + schema 迁移（v9）
 │   │   ├── grid.js          # 组件渲染/拖拽/尺寸/编辑
 │   │   ├── aimanager.js     # AI 应用面板 + 会话统计卡
 │   │   ├── sysmonitor.js    # 系统资源监视

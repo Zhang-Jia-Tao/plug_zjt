@@ -162,7 +162,8 @@ body[data-theme="light"] .atmo {
 @container (max-width: 480px) {
   .grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-auto-rows: 188px;
+    /* 单列仍需容纳 42 格月历 + 卡片内边距，188px 会裁掉最后一行 */
+    grid-auto-rows: 208px;
   }
   .widget.size-s,
   .widget.size-m,

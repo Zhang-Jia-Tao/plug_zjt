@@ -289,18 +289,28 @@
 .tc-cal-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
+  gap: 2px;
+  margin-bottom: 4px;
 }
-.tc-cal-title { font-size: 14px; font-weight: 600; }
+.tc-cal-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+}
 .tc-nav {
   border: none;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  font-size: 16px;
-  width: 24px;
-  height: 24px;
+  font-size: 15px;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -315,8 +325,9 @@
   color: var(--muted);
   cursor: pointer;
   font-size: 14px;
-  width: 24px;
-  height: 24px;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -335,13 +346,15 @@
   font-size: 10px;
   color: var(--muted);
   text-align: center;
-  padding: 3px 0;
+  padding: 2px 0;
 }
+/* 42 格固定月历：行内边距压到 2px，保证 6 行完整落在 208px 卡片内，不被下边框裁掉 */
 .tc-day {
   position: relative;
   font-size: 12px;
+  line-height: 1.2;
   text-align: center;
-  padding: 5px 0;
+  padding: 2px 0;
   border-radius: 50%;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
@@ -359,10 +372,10 @@
 .tc-dot {
   position: absolute;
   left: 50%;
-  bottom: 1px;
+  bottom: 0;
   transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
   background: var(--primary);
 }
@@ -454,8 +467,12 @@
 }
 .tc-add-input:focus { border-color: var(--primary); }
 .tc-form-tip { font-size: 11px; color: var(--danger); min-height: 14px; }
-/* 窄尺寸（s 卡）：上下堆叠 */
-.widget.size-s .tc-top { flex-direction: column; }
+/* 窄尺寸（s 卡）：上下堆叠；高度不够时允许卡内滚动，避免月历被裁掉 */
+.widget.size-s .time-calendar { overflow-y: auto; }
+.widget.size-s .tc-top {
+  flex: 0 0 auto;
+  flex-direction: column;
+}
 .widget.size-s .tc-clock {
   border-right: none;
   border-bottom: 1px solid var(--card-border);
@@ -465,7 +482,52 @@
 .widget.size-s .tc-cal { padding: 10px 0 0; }
 
 /* ---- 便利贴任务 ---- */
-.sticky-tasks { display: flex; flex-direction: column; height: 100%; gap: 6px; overflow-y: auto; }
+.sticky-tasks { display: flex; flex-direction: column; height: 100%; gap: 6px; overflow: hidden; }
+.st-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.st-title { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.4px; }
+.st-refresh {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s, transform 0.4s;
+}
+.st-refresh:hover { background: var(--card-hover); color: var(--primary); transform: rotate(90deg); }
+.st-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 2px;
+  scrollbar-gutter: stable;
+}
+.st-link {
+  border: 1px solid var(--card-border);
+  background: var(--card-hover);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.st-link:hover { border-color: var(--primary); color: var(--primary); }
 .st-group-title {
   font-size: 13px;
   font-weight: 600;
@@ -641,10 +703,16 @@
    m 尺寸（2 列卡片）即可舒适显示，不再需要满宽。 */
 /* 3 列 M 卡的时间卡变窄：46px 时钟会顶到边框，按网格可用宽度降一档 */
 @container (min-width: 701px) and (max-width: 1100px) {
-  .widget.size-m .tc-time { font-size: 40px; }
-  .widget.size-m .tc-ss { font-size: 17px; }
+  /* 3 列 M 卡：隐藏秒数并收一档字号，给月历留出完整标题和 7 列宽度 */
+  .widget.size-m .tc-ss { display: none; }
+  .widget.size-m .tc-time { font-size: 36px; letter-spacing: 1px; }
+  .widget.size-m .tc-cal-title { font-size: 12px; }
   .widget.size-m .tc-top { gap: 14px; }
   .widget.size-m .tc-clock { padding-right: 12px; }
+}
+@container (max-width: 700px) {
+  /* 2 列 / 单列时时钟给到一半宽度，完整时分秒不会挤到月历 */
+  .widget.size-m .tc-clock { flex-basis: 50%; }
 }
 
 .music-widget { height: 100%; overflow: hidden; }

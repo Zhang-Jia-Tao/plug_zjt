@@ -69,6 +69,12 @@ export default {
 | `focusTimer` | 番茄钟/专注倒计时，刷新页面可续计时 |
 | `music` | 本地音乐播放器（File System Access 直读） |
 
+### 便利贴任务
+
+- 卡片标题栏固定显示，带刷新按钮；未配置 ID、扩展未启用、来源未授权都会显示原因和「去设置/重试」入口。
+- 跨扩展请求 5 秒超时，避免卡片一直停在「正在读取」。
+- 若提示来源未授权，检查便利贴 `extension/manifest.json` 的 `externally_connectable.ids` 是否包含设置页显示的「本扩展 ID」。
+
 ### 番茄钟
 
 - 状态保存在 `widget.data`：`minutes`、`endAt`、`remainingMs`、`running`。
@@ -81,9 +87,9 @@ export default {
 `js/store.js`：
 
 - 单键 `newtab_state = { settings, widgets }`，整体读写。
-- `settings.schemaVersion` 记录结构版本；当前 `SCHEMA_VERSION = 8`。
+- `settings.schemaVersion` 记录结构版本；当前 `SCHEMA_VERSION = 9`。
 - `migrateState()` 按版本递增补默认组件/改默认值，不改变用户已有布局顺序。
-- v7 → v8 追加 `focusTimer`；已有 v8 不重复迁移。
+- v7 → v8 追加 `focusTimer`；v8 → v9 补回缺失的 `stickyTasks`；已有组件不重复迁移。
 - `settings.stickyExtId` 保存便利贴扩展 ID，供任务/提醒联动。
 - `settings.showSysPanel` / `settings.showAiPanel` 保存宽屏停靠偏好；窄屏抽屉是临时态，不写入这两个字段。
 
@@ -193,6 +199,9 @@ node tests/focus-timer.test.mjs
 
 # 面板停靠/抽屉断点回归
 node tests/panel-layout.test.mjs
+
+# 便利贴跨扩展消息回归
+node tests/sticky-bridge.test.mjs
 ```
 
 ## 常见问题

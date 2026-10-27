@@ -163,7 +163,8 @@
           <span>便利贴扩展 ID</span>
           <input id="s-sticky-ext-id" type="text" placeholder="chrome://extensions 中查看" />
         </label>
-        <p class="settings-tip">填写「程序员便利贴」扩展的 ID 后，任务小组件可读取并勾选便利贴的规划清单。</p>
+        <p class="settings-tip">填写「程序员便利贴」扩展的 ID 后，任务小组件可读取并勾选便利贴的规划清单。本扩展 ID：<code id="s-self-ext-id">—</code></p>
+        <p class="settings-tip">若提示“来源未授权”，请确认便利贴 <code>extension/manifest.json</code> 的 <code>externally_connectable.ids</code> 包含上面的本扩展 ID。</p>
       </div>
 
       <div class="settings-section">

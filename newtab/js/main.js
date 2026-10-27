@@ -39,6 +39,7 @@ function refresh() {
       // widget 内部 api.patchWidget 已更新内存 state，这里只落盘
       await saveState(state);
     },
+    onOpenSettings: openSettings,
   });
 }
 
@@ -212,6 +213,7 @@ function openSettings() {
   closeOverlayPanels();
   $('#s-theme').value = state.settings.theme;
   $('#s-sticky-ext-id').value = state.settings.stickyExtId;
+  $('#s-self-ext-id').textContent = chrome.runtime.id;
   $('#s-show-sys').checked = state.settings.showSysPanel !== false;
   $('#s-show-ai').checked = state.settings.showAiPanel !== false;
   syncBgControls();

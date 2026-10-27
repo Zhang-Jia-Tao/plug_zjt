@@ -167,8 +167,9 @@ notionPush
 
 - `settings`：`theme`、`bgColor`、`stickyExtId`、`showSysPanel`、`showAiPanel`、`schemaVersion`。
 - `widgets`：`{id, key, size, data}` 数组；`data` 由各 widget 自定义。
-- `SCHEMA_VERSION = 8`；迁移只追加/改默认值，不重排用户布局。
+- `SCHEMA_VERSION = 9`；迁移只追加/改默认值，不重排用户布局。
   - v7 → v8：追加 `focusTimer`（番茄钟）。
+  - v8 → v9：补回缺失的 `stickyTasks`（便利贴任务）。
 - 目录句柄存 IndexedDB（`newtab_tree`），与 state 分开。
 
 ## 5. 安全模型
@@ -207,7 +208,8 @@ notionPush
 - `tests/folder-sync.test.mjs`：清理范围（未知目录/非 `.md`/非 UUID 不删）。
 - `tests/notion-properties.test.mjs`：schema 过滤、类型不符跳过、旧调用兼容。
 - `tests/manifest.test.mjs`：跨扩展白名单与宿主 allowed_origins 一致、无通配。
-- `tests/focus-timer.test.mjs`：番茄钟注册/默认状态/v7→v8 迁移。
+- `tests/focus-timer.test.mjs`：番茄钟/便利贴任务注册、默认状态与 v7→v9 迁移。
+- `tests/sticky-bridge.test.mjs`：便利贴跨扩展消息的错误映射。
 - `scripts/check.mjs`：manifest/JSON、资源引用、白名单、widget registry。
 
 在受限环境中 `node --test tests/` 可能因测试 runner 子进程管道被拦截而 `spawn EPERM`；

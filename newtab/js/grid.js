@@ -62,9 +62,20 @@ export function renderGrid(state, handlers) {
           handlers.onDataChange(w.id, patch);
         },
         settings: state.settings,
+        openSettings: handlers.onOpenSettings,
       };
-      const cleanup = def.init(body, w.data || {}, api);
-      el._widgetCleanup = typeof cleanup === 'function' ? cleanup : (def.destroy ? () => def.destroy(body) : null);
+      try {
+        const cleanup = def.init(body, w.data || {}, api);
+        el._widgetCleanup = typeof cleanup === 'function' ? cleanup : (def.destroy ? () => def.destroy(body) : null);
+      } catch (e) {
+        // 单个 widget 初始化失败不能拖垮后续组件（例如旧数据导致前一个组件抛错）
+        console.error(`[widget:${w.key}] 初始化失败`, e);
+        body.innerHTML = '';
+        const tip = document.createElement('div');
+        tip.className = 'widget-missing';
+        tip.textContent = `组件加载失败：${e && e.message ? e.message : e}`;
+        body.appendChild(tip);
+      }
     }
 
     grid.appendChild(el);

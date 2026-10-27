@@ -5,7 +5,7 @@ const KEY = 'newtab_state';
 
 // 状态结构版本号：新增默认组件等增量变更时 +1，
 // 并在 migrateState 中补对应迁移逻辑（老用户自动升级，不动其已排好的布局）
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 // 预置背景色（设置面板可选）
 export const BG_PRESETS = [
@@ -127,6 +127,14 @@ export function migrateState(state) {
     const keys = new Set(migrated.widgets.map(w => w.key));
     if (!keys.has('focusTimer')) {
       const def = DEFAULT_STATE.widgets.find(w => w.key === 'focusTimer');
+      if (def) migrated.widgets.push(structuredClone(def));
+    }
+  }
+  // v8 -> v9：补回便利贴任务组件（旧布局或误删后缺失时；已有则不重复添加）
+  if (version < 9) {
+    const keys = new Set(migrated.widgets.map(w => w.key));
+    if (!keys.has('stickyTasks')) {
+      const def = DEFAULT_STATE.widgets.find(w => w.key === 'stickyTasks');
       if (def) migrated.widgets.push(structuredClone(def));
     }
   }
