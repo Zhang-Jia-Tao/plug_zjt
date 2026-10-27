@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "程序员便利贴",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "记录测试环境、正式环境、账号、需求、缺陷、BUG、网址、提醒、会议等工作信息，支持本地文件夹与 Notion 云同步。",
   "permissions": [
     "storage",
