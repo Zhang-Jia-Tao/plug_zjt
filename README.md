@@ -6,7 +6,7 @@
 |------|------|------|
 | 可定制新标签页 | `newtab/` | 新标签页小组件、书签栏、本地目录树、AI 应用管理器、系统资源监视 |
 | 程序员便利贴 | `extension/` | 侧边栏便利贴：分类记录、提醒、文件夹同步、Notion 云同步 |
-| AI 管理器本地宿主 | `ai_manager_host/` | Native Messaging host：枚举本机 AI 应用、读会话日志、点白名单弹窗、采集系统指标 |
+| AI 管理器本地宿主 | `ai_manager_host/` | Native Messaging host：枚举本机 AI 应用/模型、读会话日志、点白名单弹窗、采集系统指标；网页 AI 状态由 newtab 内容脚本采集 |
 
 三者关系：
 
@@ -46,7 +46,9 @@ install-host.bat <新标签页扩展ID>
 ```
 
 扩展 ID 在 `chrome://extensions` 的「可定制新标签页」卡片上查看。安装脚本会把
-`allowed_origins` 锁定到该 ID，并写入当前用户的 Chrome Native Messaging 注册表（无需管理员）。
+`allowed_origins` 锁定到该 ID，生成机器本地清单，并写入当前用户的 Chrome 与 Edge
+Native Messaging 注册表（无需管理员）。版本库里的 `com.zjt.ai_manager.json` 是可移植模板，
+不会被安装脚本修改。
 
 ### 3. 配置跨扩展联动（可选）
 
@@ -112,12 +114,14 @@ plug_zjt/
 │   │   ├── layout.js        # 布局断点判定（可单测）
 │   │   ├── store.js         # newtab_state 读写 + schema 迁移（v9）
 │   │   ├── grid.js          # 组件渲染/拖拽/尺寸/编辑
-│   │   ├── aimanager.js     # AI 应用面板 + 会话统计卡
+│   │   ├── aimanager.js     # AI 面板：本机状态 + 网页 AI + 会话统计
+│   │   ├── webai-sites.js   # 网页 AI 站点注册表
 │   │   ├── sysmonitor.js    # 系统资源监视
 │   │   ├── widgets/         # 各小组件（registry.js 注册）
 │   │   ├── handle-store.js  # 目录句柄 IndexedDB
 │   │   └── fs-access.js     # 目录扫描/读写
 │   ├── content.js/tree.*    # 任意网页侧栏目录树
+│   ├── content-webai.js     # 网页 AI 状态采集（仅 AI 站点）
 │   └── offscreen.*          # 剪贴板代持
 ├── extension/               # 程序员便利贴扩展
 │   ├── background.js        # SW：消息路由、Notion、alarms、downloads
@@ -126,6 +130,7 @@ plug_zjt/
 │   └── lib/                 # store/fs/notion/categories/idb
 ├── ai_manager_host/         # Node.js Native Messaging host
 │   ├── host.mjs             # 主程序：轮询/协议/会话聚合
+│   ├── probe.mjs            # 本地 AI 模型名解析
 │   ├── sysmon.ps1           # 系统指标采集
 │   ├── dialogs.ps1          # UIA 弹窗枚举
 │   └── dialog-click.ps1     # 白名单弹窗按钮点击
@@ -148,7 +153,9 @@ plug_zjt/
 ## 已知限制
 
 - 本地 AI 宿主仅支持 Windows（WMI/CIM + UIA + PowerShell）。
+- 网页 AI 只能可靠监控打开/空闲/生成中与标题，不提供 token/费用统计；站点 DOM 改版可能导致「生成中」退化为 online。
+- 本地 AI 的模型信息依赖各服务 HTTP API；端口被占用或需要鉴权时只显示进程在线状态。
 - 系统指标依赖 WMI 权限；在受限沙箱/无权限环境下 CPU、GPU、温度可能为空。
-- 宿主清单 `ai_manager_host/com.zjt.ai_manager.json` 内含本机绝对路径与扩展 ID，换机器/换路径后需重新安装。
+- 宿主清单 `ai_manager_host/com.zjt.ai_manager.json` 是可移植模板；实际清单由 `install-host.bat` 生成到 gitignored 的 `com.zjt.ai_manager.local.json`。
 - 新标签页的目录树需要 File System Access 权限；浏览器重启后部分目录可能需要重新授权。
 - 没有打包构建；修改后需在 `chrome://extensions` 重新加载对应扩展。

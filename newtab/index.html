@@ -48,8 +48,19 @@
       <button id="ai-close" class="ai-head-btn panel-close" title="关闭 AI 面板" aria-label="关闭 AI 面板">✕</button>
     </div>
     <div id="ai-banner" class="ai-banner hidden"></div>
+    <div class="ai-group-title">
+      <span>本机 AI</span>
+      <span id="ai-local-count" class="ai-group-count"></span>
+    </div>
     <div id="ai-app-list" class="ai-app-list">
-      <!-- 由 JS 渲染：应用卡片（在线/任务中/离线） -->
+      <!-- 由 JS 渲染：本地应用卡片（在线/任务中/离线） -->
+    </div>
+    <div class="ai-group-title">
+      <span>网页 AI</span>
+      <span id="ai-web-count" class="ai-group-count"></span>
+    </div>
+    <div id="ai-web-list" class="ai-app-list ai-web-list">
+      <div class="ai-empty">打开 ChatGPT / Claude / Gemini 等网页后自动出现</div>
     </div>
     <div id="ai-dialog-list" class="ai-dialog-list">
       <!-- 由 JS 渲染：待处理弹窗（确认/否认按钮） -->

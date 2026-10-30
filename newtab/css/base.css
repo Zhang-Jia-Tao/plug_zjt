@@ -598,6 +598,28 @@ body.ai-panel-on .ai-panel { display: flex; }
   flex-shrink: 0;
 }
 
+/* 应用分组标题（本机 / 网页） */
+.ai-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 13px 4px;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.ai-group-count {
+  min-width: 16px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
 /* 应用列表 */
 .ai-app-list {
   display: flex;
@@ -605,8 +627,16 @@ body.ai-panel-on .ai-panel { display: flex; }
   gap: 4px;
   padding: 0 10px;
   flex-shrink: 0;
-  max-height: min(220px, 30vh);
+  max-height: min(180px, 24vh);
   overflow-y: auto;
+}
+.ai-web-list { max-height: min(160px, 22vh); }
+.ai-empty {
+  padding: 14px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
 }
 .ai-app {
   display: flex;
@@ -637,6 +667,27 @@ body.ai-panel-on .ai-panel { display: flex; }
   mask-position: center;
 }
 .ai-app-icon-fallback { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
+/* 网页 AI 用字母徽标，不依赖各站点 favicon / 外链图标 */
+.ai-web-avatar {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--web-color, #6b7280);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.ai-web-app:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 65%, transparent);
+  outline-offset: -2px;
+}
+.ai-web-app .ai-app-detail { max-width: 100%; }
 .ai-app-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ai-app-name { font-size: 13px; font-weight: 500; }
 .ai-app-detail { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

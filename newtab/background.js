@@ -7,6 +7,7 @@
 
 import { listDirHandles, removeDirHandle } from './js/handle-store.js';
 import { scanDirectory, readFile, writeFile, createDirectory } from './js/fs-access.js';
+import { matchWebAiSite, webAiSiteById } from './js/webai-sites.js';
 
 // ---- AI 管理器：Native Messaging 端口 ----
 // 页面侧用 chrome.runtime.connect({ name: 'ai:subscribe' }) 建立到 SW 的长连接；
@@ -27,8 +28,12 @@ chrome.runtime.onConnect.addListener((pagePort) => {
   });
   // 新订阅者：确保 host 连接活着，并立即请求一份快照
   const port = ensureAiPort();
-  if (port) port.postMessage({ type: 'query' });
-  else pagePort.postMessage({ action: 'ai:event', payload: { type: 'host:error', message: 'host 未连接（是否已运行 install-host.bat？）' } });
+  if (port) {
+    try { port.postMessage({ type: 'query' }); } catch { /* host 刚断开，等重连 */ }
+  } else {
+    pagePort.postMessage({ action: 'ai:event', payload: { type: 'host:error', message: 'host 未连接（是否已运行 install-host.bat？）' } });
+  }
+  sendWebAiTo(pagePort); // 网页 AI 不依赖 host，host 未安装时也要能显示
 });
 
 function ensureAiPort() {
@@ -56,10 +61,191 @@ function broadcastAi(msg) {
   }
 }
 
+// ---- 网页 AI：content script 上报 → SW 按 tab 聚合 ----
+// 网页状态不经过 Native Messaging；host 未安装时也能工作。
+const webAiTabs = new Map(); // tabId → {app,status,title,active,url,lastTs}
+const WEB_AI_TTL_MS = 60_000;
+let lastWebAiJson = '';
+
+// 标签冻结/内容脚本失效/页面崩溃后不会再上报，靠 TTL 把僵尸卡片清掉。
+function pruneStaleWebAi(now = Date.now()) {
+  let changed = false;
+  for (const [tabId, st] of webAiTabs) {
+    if (!st.lastTs || now - st.lastTs > WEB_AI_TTL_MS) {
+      webAiTabs.delete(tabId);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function cleanWebTitle(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+}
+
+function buildWebApps() {
+  pruneStaleWebAi();
+  const groups = new Map();
+  for (const [tabId, st] of webAiTabs) {
+    const site = webAiSiteById(st.app);
+    if (!site) continue;
+    let group = groups.get(site.id);
+    if (!group) {
+      group = { site, tabs: [] };
+      groups.set(site.id, group);
+    }
+    group.tabs.push({ tabId, ...st });
+  }
+
+  const apps = [];
+  for (const { site, tabs } of groups.values()) {
+    const active = tabs.find(t => t.active);
+    const tasking = tabs.find(t => t.status === 'tasking');
+    // 同一站点多标签：优先聚焦正在生成的标签，其次当前活动标签
+    const focus = tasking || active
+      || tabs.slice().sort((a, b) => b.lastTs - a.lastTs)[0];
+    const title = focus.title || site.name;
+    const activeTitle = active && active.title;
+    const detail = tabs.length > 1
+      ? `${tabs.length} 个标签页${activeTitle ? ' · ' + activeTitle : ''}`
+      : (focus.title || site.detail || title);
+    apps.push({
+      id: site.id,
+      name: site.name,
+      status: tasking ? 'tasking' : 'online',
+      active: !!active,
+      tabId: focus.tabId,
+      title,
+      detail,
+      color: site.color,
+      short: site.short,
+      url: focus.url,
+      lastTs: Math.max(...tabs.map(t => t.lastTs || 0)),
+    });
+  }
+
+  return apps.sort((a, b) =>
+    (b.status === 'tasking') - (a.status === 'tasking')
+    || (b.active ? 1 : 0) - (a.active ? 1 : 0)
+    || b.lastTs - a.lastTs);
+}
+
+// lastTs 每次心跳都会变，但不影响卡片内容；签名不包含它，避免 8s 重画一次
+function webAiSignature(apps) {
+  return JSON.stringify(apps.map(a => ({
+    id: a.id,
+    status: a.status,
+    active: a.active,
+    tabId: a.tabId,
+    title: a.title,
+    detail: a.detail,
+  })));
+}
+
+function broadcastWebAi(force = false) {
+  const apps = buildWebApps();
+  const sig = webAiSignature(apps);
+  if (!force && sig === lastWebAiJson) return;
+  lastWebAiJson = sig;
+  broadcastAi({ type: 'webai', apps });
+}
+
+// 新订阅者必须收到当前网页状态，即使签名与上一次广播相同
+function sendWebAiTo(pagePort) {
+  pruneStaleWebAi();
+  try {
+    pagePort.postMessage({ action: 'ai:event', payload: { type: 'webai', apps: buildWebApps() } });
+  } catch { /* 页面已关 */ }
+}
+
+function handleWebAiState(msg, sender, sendResponse) {
+  const tab = sender && sender.tab;
+  const p = (msg && msg.payload) || {};
+  if (!tab || typeof tab.id !== 'number' || tab.id < 0) {
+    sendResponse({ ok: false, message: '缺少来源标签页' });
+    return;
+  }
+  let tabHost = '';
+  try { tabHost = new URL(tab.url || '').hostname; } catch { tabHost = ''; }
+  let host = tabHost;
+  if (!host) {
+    try { host = p.host || new URL(p.url || '').hostname; } catch { host = ''; }
+  }
+  const site = matchWebAiSite(host);
+  if (!site) {
+    if (webAiTabs.delete(tab.id)) broadcastWebAi(true);
+    sendResponse({ ok: false, message: '非受支持站点' });
+    return;
+  }
+  webAiTabs.set(tab.id, {
+    app: site.id,
+    status: p.status === 'tasking' ? 'tasking' : 'online',
+    title: cleanWebTitle(p.title),
+    // sender.tab.active 比页面 visibilityState 更可靠（后台窗口/预渲染时）
+    active: typeof tab.active === 'boolean' ? tab.active : !!p.active,
+    url: String(p.url || tab.url || '').slice(0, 300),
+    lastTs: Date.now(),
+  });
+  broadcastWebAi();
+  sendResponse({ ok: true });
+}
+
+function handleWebAiFocus(payload, sendResponse) {
+  const tabId = Number(payload && payload.tabId);
+  if (!Number.isInteger(tabId) || !webAiTabs.has(tabId)) {
+    sendResponse({ ok: false, message: '标签页已关闭' });
+    return;
+  }
+  // onMessage 的异步包装没有返回 true，异步回调里的 sendResponse 可能已失效；
+  // 焦点操作本身不需要 UI 等结果，先确认已接受，再异步切标签。
+  sendResponse({ ok: true });
+  chrome.tabs.get(tabId, (tab) => {
+    if (chrome.runtime.lastError || !tab) return;
+    chrome.tabs.update(tabId, { active: true }, () => { void chrome.runtime.lastError; });
+    if (typeof tab.windowId === 'number') {
+      chrome.windows.update(tab.windowId, { focused: true }, () => { void chrome.runtime.lastError; });
+    }
+  });
+}
+
+function pruneWebAiTab(tabId) {
+  if (webAiTabs.delete(tabId)) broadcastWebAi(true);
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => pruneWebAiTab(tabId));
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  let changed = false;
+  for (const [id, st] of webAiTabs) {
+    const active = id === tabId;
+    if (st.active !== active) { st.active = active; changed = true; }
+  }
+  if (changed) broadcastWebAi(true);
+});
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.discarded) { pruneWebAiTab(tabId); return; }
+  if (!info.url && info.status !== 'complete') return;
+  const url = (tab && tab.url) || '';
+  let host = '';
+  try { host = new URL(url).hostname; } catch { host = ''; }
+  const site = matchWebAiSite(host);
+  if (!site) { pruneWebAiTab(tabId); return; }
+  const prev = webAiTabs.get(tabId);
+  if (prev && prev.app !== site.id) pruneWebAiTab(tabId);
+});
+
 function handleAiMessage(msg, sender, sendResponse) {
   switch (msg.action) {
+    case 'ai:web-state': {
+      handleWebAiState(msg, sender, sendResponse);
+      break;
+    }
+    case 'ai:web-focus': {
+      handleWebAiFocus(msg.payload, sendResponse);
+      break;
+    }
     case 'ai:query': {
       const port = ensureAiPort();
+      broadcastWebAi(true); // 手动刷新也同步刷新网页 AI
       if (!port) { sendResponse({ ok: false, message: 'host 未连接' }); break; }
       port.postMessage({ type: 'query' });
       sendResponse({ ok: true });

@@ -13,6 +13,16 @@ const APP_ICONS = {
   lmstudio: 'img/apps/lmstudio.svg',
   'claude-desktop': 'img/apps/claude-desktop.svg',
   cursor: 'img/apps/cursor.svg',
+  llamacpp: 'img/apps/local.svg',
+  vllm: 'img/apps/local.svg',
+  localai: 'img/apps/local.svg',
+  koboldcpp: 'img/apps/local.svg',
+  gpt4all: 'img/apps/local.svg',
+  jan: 'img/apps/local.svg',
+  'cherry-studio': 'img/apps/local.svg',
+  chatbox: 'img/apps/local.svg',
+  anythingllm: 'img/apps/local.svg',
+  textgen: 'img/apps/local.svg',
 };
 
 // 图标 HTML：SVG 经 <img> 加载无法继承 currentColor（外链 SVG 是独立文档），
@@ -25,7 +35,8 @@ function appIconHtml(id) {
 }
 
 let port = null;           // 到 SW 的订阅连接
-let apps = [];             // [{id,name,status,detail}]
+let apps = [];             // 本机 [{id,name,status,detail}]
+let webApps = [];          // 网页 [{id,name,status,detail,active,tabId,color,short}]
 let sessions = [];         // [{app,id,project,model,sumIn,sumCacheRead,sumOut,turns,lastTs}]
 const dialogs = new Map(); // id → dialog 对象
 // 各应用会话状态（head 徽标用）：app → 'idle' | 'tasking' | 'done'
@@ -79,6 +90,9 @@ function onEvent(ev) {
     case 'apps':
       apps = ev.apps || apps;
       break;
+    case 'webai':
+      webApps = ev.apps || [];
+      break;
     case 'message':
       updateSessionState(ev); // 实时消息只更新状态徽标
       break;
@@ -125,7 +139,7 @@ function updateSessionState(msg) {
 // head 徽标聚合：任一应用在产出即「实现中」，否则任一刚完成即「完毕」，否则「空闲」
 function statusText() {
   const states = Object.values(sessionStates);
-  if (states.includes('tasking')) return '实现中';
+  if (states.includes('tasking') || webApps.some(w => w.status === 'tasking')) return '实现中';
   if (states.includes('done')) return '完毕';
   return '空闲';
 }
@@ -133,7 +147,7 @@ function statusText() {
 // 徽标样式 class 与聚合状态对应（idle 淡色、tasking 主题色、done 强调色）
 function statusClassOf() {
   const states = Object.values(sessionStates);
-  if (states.includes('tasking')) return 'tasking';
+  if (states.includes('tasking') || webApps.some(w => w.status === 'tasking')) return 'tasking';
   if (states.includes('done')) return 'done';
   return 'idle';
 }
@@ -151,11 +165,13 @@ function hideBanner() {
 // 增量策略：会话状态变化才重画状态徽标；应用列表按 apps 引用变化重画；
 // 会话统计只在 stats 引用/内容变化时重画（host 推 session 事件节流）。
 let lastAppsRef = null;
+let lastWebRef = null;
 let lastStatusText = null;
 let lastStatsJson = '';
 
 function render() {
   const list = document.getElementById('ai-app-list');
+  const webList = document.getElementById('ai-web-list');
   const dlgList = document.getElementById('ai-dialog-list');
   if (!list) return;
 
@@ -170,13 +186,13 @@ function render() {
     }
   }
 
-  // 应用列表：apps 数组引用变化才重画（host 只在状态变化时才发新数组）
+  // 本机应用列表：apps 数组引用变化才重画（host 只在状态变化时才发新数组）
   if (apps !== lastAppsRef) {
     lastAppsRef = apps;
     list.innerHTML = apps.length === 0
       ? '<div class="ai-empty">等待主机上报…<br/>若长时间无响应，请确认已运行 install-host.bat</div>'
       : apps.map(a => `
-        <div class="ai-app ${a.status}">
+        <div class="ai-app ${a.status}" title="${escapeAttr(a.name + ' · ' + (a.detail || ''))}">
           ${appIconHtml(a.id)}
           <span class="ai-app-info">
             <span class="ai-app-name">${escapeHtml(a.name)}</span>
@@ -186,6 +202,30 @@ function render() {
         </div>
       `).join('');
   }
+
+  // 网页 AI：数组引用变化才重画；点击卡片聚焦对应标签页
+  if (webList && webApps !== lastWebRef) {
+    lastWebRef = webApps;
+    webList.innerHTML = webApps.length === 0
+      ? '<div class="ai-empty">打开 ChatGPT / Claude / Gemini 等网页后自动出现</div>'
+      : webApps.map(w => `
+        <div class="ai-app ai-web-app ${w.status}${w.active ? ' active' : ''}"
+             role="button" tabindex="0" data-web-tab="${Number(w.tabId)}"
+             title="${escapeAttr(w.name + ' · ' + (w.title || w.detail || ''))}">
+          <span class="ai-web-avatar" style="--web-color:${safeColor(w.color)}">${escapeHtml(w.short || 'AI')}</span>
+          <span class="ai-app-info">
+            <span class="ai-app-name">${escapeHtml(w.name)}</span>
+            <span class="ai-app-detail">${escapeHtml(w.detail || w.title || '网页会话')}</span>
+          </span>
+          <span class="ai-app-dot" title="${w.status}"></span>
+        </div>
+      `).join('');
+  }
+
+  const localCount = document.getElementById('ai-local-count');
+  if (localCount) localCount.textContent = apps.length ? String(apps.length) : '';
+  const webCount = document.getElementById('ai-web-count');
+  if (webCount) webCount.textContent = webApps.length ? String(webApps.length) : '';
 
   // 弹窗通知：数量小，直接重画
   if (dlgList) {
@@ -236,7 +276,7 @@ function renderSessionStats(force = false) {
   lastStatsJson = json;
 
   if (sessions.length === 0) {
-    el.innerHTML = '<div class="ai-session-empty">暂无会话数据<br/>启动 Claude Code / ChatGPT 后自动出现</div>';
+    el.innerHTML = '<div class="ai-session-empty">暂无本地会话数据<br/>启动 Claude Code / ChatGPT 桌面版后自动出现</div>';
     return;
   }
   el.innerHTML = sessions.map((s, i) => `
@@ -285,6 +325,17 @@ function appName(id) {
 
 // ---- 交互（事件委托，渲染后不用重挂） ----
 document.addEventListener('click', async (e) => {
+  // 网页 AI 卡片 → 切到对应标签页
+  const webCard = e.target.closest('.ai-web-app');
+  if (webCard) {
+    const tabId = Number(webCard.dataset.webTab);
+    if (Number.isInteger(tabId)) {
+      chrome.runtime.sendMessage({ action: 'ai:web-focus', payload: { tabId } }, () => {
+        void chrome.runtime.lastError;
+      });
+    }
+    return;
+  }
   // 会话短 ID → 复制完整 ID
   const idBtn = e.target.closest('.ai-session-id');
   if (idBtn) {
@@ -315,6 +366,19 @@ document.addEventListener('click', async (e) => {
     chrome.runtime.sendMessage({ action: 'ai:query' }, () => { void chrome.runtime.lastError; });
   }
 });
+
+// 网页 AI 卡片支持键盘 Enter / Space 聚焦标签页
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const webCard = e.target.closest('.ai-web-app');
+  if (!webCard) return;
+  e.preventDefault();
+  webCard.click();
+});
+
+function safeColor(value) {
+  return /^#[0-9a-f]{3,8}$/i.test(String(value || '')) ? value : '#6b7280';
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

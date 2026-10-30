@@ -98,18 +98,26 @@ export default {
 数据链路：
 
 ```text
+本机 AI：
 newtab 页面
   aimanager.js  ── runtime.connect('ai:subscribe') ──► background.js
                                                         │ connectNative
                                                         ▼
                                               ai_manager_host/host.mjs
   aimanager.js  ◄── ai:event 广播 ── background.js ◄── host 推送
+
+网页 AI：
+content-webai.js ── ai:web-state ──► background.js（按 tab 聚合）
+  aimanager.js  ◄── ai:event(type: webai) ── background.js
 ```
 
-- 事件：`apps`（应用状态）、`message`（实时消息，驱动会话状态徽标）、`session`（会话统计）、`dialog` / `dialog:closed`、`snapshot`、`sys`、`host:ready`、`host:error`。
-- UI 只展示会话统计卡（项目/模型/输入/输出/轮次/最近请求），不渲染完整对话历史。
+- 本机事件：`apps`（应用状态）、`message`（实时消息，驱动会话状态徽标）、`session`（会话统计）、`dialog` / `dialog:closed`、`snapshot`、`sys`、`host:ready`、`host:error`。
+- 网页事件：`webai`（每个站点的打开/空闲/生成中状态、活动标签页）。
+- 本机应用覆盖 Claude Code、ChatGPT 桌面版、Ollama、LM Studio、llama.cpp、vLLM、LocalAI、KoboldCpp、GPT4All、Jan、AnythingLLM、text-generation-webui、Cherry Studio、Chatbox、Claude 桌面版、Cursor。
+- 网页 AI 当前覆盖 ChatGPT、Claude、Gemini、DeepSeek、Kimi、Perplexity、Grok、Copilot，只读页面状态和标题，不读取聊天正文，也不承诺 token/费用统计。
+- UI 只展示本机会话统计卡（项目/模型/输入/输出/轮次/最近请求），不渲染完整对话历史；网页卡片点击可切到对应标签页。
 - 会话短 ID 可点击复制完整 ID；相对时间每 30s 自动刷新。
-- 弹窗确认/否认：`ai:respond` → SW → host 遥控点击白名单进程的按钮；host 不会自动点。
+- 弹窗确认/否认：`ai:respond` → SW → host 遥控点击白名单进程的按钮；host 不会自动点。新增本地应用默认只做状态监控，不在弹窗白名单里。
 - 连接断开指数退避重连（1s → 15s）。
 
 ## 系统资源监视
@@ -118,8 +126,8 @@ newtab 页面
 
 - 指标：CPU、内存、交换、磁盘读写、开机时长、CPU/GPU 温度、GPU/显存。
 - 40 点迷你折线；无数据时显示 `--`。
-- 刷新按钮（`#sys-refresh`）重新请求快照；呼吸点超过 12s 无数据变灰。
-- 页面可见时 3s 高频、切到后台自动降到 15s；回到前台立即拉一次快照。
+- 刷新按钮（`#sys-refresh`）重新请求快照；呼吸点超过 20s 无数据变灰。
+- 页面可见时 5s 高频、切到后台自动降到 15s；回到前台立即拉一次快照。
 - 数据来自宿主 `sysmon.ps1`（WMI/CIM）；受限环境下部分指标可能为空。
 
 ## 本地目录树
@@ -151,7 +159,8 @@ newtab 页面
 | `<all_urls>`（optional） | 目录树在任意网页启用 |
 
 > 内容脚本注入 `<all_urls>`，但目录树 UI 默认隐藏，只有快捷键/按钮才显示；如不需要可在
-> `chrome://extensions` 关闭站点访问或移除该内容脚本。
+> `chrome://extensions` 关闭站点访问或移除该内容脚本。`content-webai.js` 仅注入上方列出的
+> AI 站点，只上报 host/status/title/active，不读取聊天正文。
 
 ## 文件结构
 
@@ -159,8 +168,9 @@ newtab 页面
 newtab/
 ├── manifest.json
 ├── index.html               # 新标签页主体
-├── background.js            # SW：AI 端口、目录树/剪贴板/音乐路由
+├── background.js            # SW：AI 端口/网页聚合、目录树/剪贴板/音乐路由
 ├── content.js / content.css # 任意网页目录树入口
+├── content-webai.js         # 网页 AI 状态采集（仅 AI 站点）
 ├── tree.html                # 目录树 iframe 页面（js/tree.js + css/tree.css）
 ├── file-picker.html         # 目录选择小窗（js/picker.js）
 ├── offscreen.html           # 剪贴板代持（js/offscreen.js）
@@ -174,7 +184,8 @@ newtab/
 │   ├── layout.js            # 纯布局断点判定（可单测）
 │   ├── store.js             # 状态读写 + 迁移
 │   ├── grid.js              # 网格渲染/拖拽/尺寸
-│   ├── aimanager.js         # AI 面板
+│   ├── aimanager.js         # AI 面板（本机 + 网页）
+│   ├── webai-sites.js       # 网页 AI 站点注册表
 │   ├── sysmonitor.js        # 系统监视
 │   ├── bookmarksbar.js      # 书签栏
 │   ├── tree.js / picker.js  # 目录树 / 目录选择
@@ -202,6 +213,12 @@ node tests/panel-layout.test.mjs
 
 # 便利贴跨扩展消息回归
 node tests/sticky-bridge.test.mjs
+
+# 网页 AI 注册表/注入覆盖回归
+node tests/webai.test.mjs
+
+# 本地 AI 模型探测回归
+node tests/ai-probe.test.mjs
 ```
 
 ## 常见问题
@@ -209,6 +226,9 @@ node tests/sticky-bridge.test.mjs
 | 现象 | 排查 |
 |------|------|
 | AI 面板显示「主机未连接」 | 是否执行 `install-host.bat <新标签页ID>`；`chrome://extensions` 里的 ID 是否与宿主 `allowed_origins` 一致 |
+| 网页 AI 分组为空 | 是否打开了受支持的 AI 站点；重新加载扩展后刷新该站点；`content-webai.js` 是否被站点匹配 |
+| 网页 AI 一直显示空闲 | 站点 Stop 按钮/aria-busy 选择器可能改版；卡片仍可点击聚焦，状态会 8s 心跳自愈 |
+| 网页 AI 为什么没有 token | 网页端没有稳定 usage 接口；本版本只做活动状态，不 hook 网络响应 |
 | 系统指标大量 `--` | WMI 权限/沙箱限制；在普通桌面 Chrome 中运行宿主，而不是受限终端 |
 | 目录树不可用 | 是否授予文件访问权限；浏览器重启后部分目录需重新授权 |
 | 任务清单为空 | 便利贴扩展的 `stickyExtId` 是否正确；便利贴扩展是否已加载 |

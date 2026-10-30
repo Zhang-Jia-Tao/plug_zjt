@@ -17,6 +17,7 @@
 │  │  ├─ File System API  │                 │ background.js (SW)   │  │
 │  │  └─ Notion API       │                 │  ├─ runtime.connect │  │
 │  └─────────────────────┘                 │  ├─ 目录树/剪贴板   │  │
+│                                          │  ├─ content-webai    │  │
 │                                          │  └─ connectNative   │  │
 │                                          └──────────┬───────────┘  │
 └─────────────────────────────────────────────────────┼──────────────┘
@@ -93,17 +94,27 @@ newtab 页面（stickyTasks.js）
 ### 3.3 AI 管理器
 
 ```text
+本机 AI：
 aimanager.js
   ├─ runtime.connect({name:'ai:subscribe'}) ──► newtab/background.js
   │                                               ├─ connectNative('ai_manager_host')
   │                                               └─ 广播 host 事件给所有订阅 port
   ├─ sendMessage('ai:query'/'ai:sysmon'/'ai:respond')
   └─ 收到 ai:event：apps/message/session/dialog/snapshot/sys/host:*
+
+网页 AI：
+content-webai.js（仅 AI 域名）
+  ├─ MutationObserver + Stop/aria-busy 判定
+  ├─ sendMessage('ai:web-state') ──► background.js 按 tab 聚合
+  └─ aimanager.js 收到 webai 事件；点击发 'ai:web-focus' 切标签页
 ```
 
 - 页面只消费事件，不直接碰 Native Messaging。
+- 本机 AI 覆盖状态/会话/弹窗；网页 AI 只覆盖打开/空闲/生成中和标题，不读聊天正文、不提供 token/费用。
+- 网页 AI 不依赖 host，host 未安装时仍可工作。
 - host 断开：SW 广播 `host:error` 并 10s 后重连；页面侧指数退避重连 port。
 - 快照预算 512 KB，消息回放按新→旧装入；页面只用快照驱动会话状态机，不渲染历史。
+- 本地 HTTP 探测并行执行，单个 1.2s 超时；8080/5000 等共用端口默认只在对应进程存在时探测。
 
 ### 3.4 系统指标
 
@@ -113,9 +124,9 @@ sysmonitor.js
   └─ 收到 ai:event{type:'sys'} → 40 点 sparkline + 数值
 ```
 
-- 页面可见 3s、后台 15s；页面全部断开时 SW 发 `fast:false`。
+- 页面可见 5s、后台 15s；页面全部断开时 SW 发 `fast:false`。
 - 刷新按钮/回到前台会 `ai:query`，host 补发 `lastSys`。
-- 12s 无数据呼吸点变灰；指标为 `null` 时显示 `--`。
+- 20s 无数据呼吸点变灰；指标为 `null` 时显示 `--`。
 
 ### 3.5 文件夹镜像
 
@@ -181,14 +192,16 @@ notionPush
 | UIA 弹窗 | 进程白名单；只枚举 `#32770`；点击由用户在 UI 触发；按 dialogId 精确匹配 |
 | 文件删除 | 只清理已知分类目录 + UUID.md；全量同步前确认 |
 | Notion | token 只存本地；schema 适配避免盲写；错误信息不回显 token |
-| 内容脚本 | `<all_urls>` 注入，但目录树默认隐藏；可选 host 权限；不需要可在扩展页关闭站点访问 |
+| 内容脚本 | `<all_urls>` 注入，但目录树默认隐藏；不需要可在扩展页关闭站点访问 |
+| 网页 AI 内容脚本 | 仅注入清单列出的 AI 域名；只上报 host/status/title/active，不读聊天正文、不 hook 网络 |
+| 本地 HTTP 探测 | 只连清单内 `127.0.0.1` 端口，不执行任意命令；共用端口需进程存在才探测 |
 
 ### 5.1 已知边界/取舍
 
 - 扩展 ID 是硬编码的：重新加载/换路径后 ID 可能变化，需要同时更新便利贴 manifest 与宿主安装参数。
-- `com.zjt.ai_manager.json` 含本机绝对路径，是「本机生成物」而非可移植配置。
+- `com.zjt.ai_manager.json` 是可移植模板（`<HOST_DIR>` 占位）；安装脚本生成 gitignored 的 `com.zjt.ai_manager.local.json`，避免把本机绝对路径提交进版本库。
 - 内容脚本注入所有站点是目录树功能的代价；如果只需要书签/组件，可移除 `content_scripts`。
-- 宿主每轮都拉起 PowerShell，CPU 开销明显；通过后台降频/快照预算控制，但仍有优化空间。
+- 宿主每轮都拉起 PowerShell，CPU 开销明显；已通过进程扫描 busy 保护、会话统计 5s 节流、sysmon 降频/快照预算控制，仍可进一步改为常驻 worker。
 - 文件夹镜像不是双向文件监听：用户直接在文件夹改 `.md` 不会回写 storage（设计如此，storage 是可信源）。
 
 ## 6. 失败与恢复
@@ -202,6 +215,8 @@ notionPush
 | 文件夹权限失效 | 写入失败静默跳过；设置页显示同步结果；主数据不受影响 |
 | Notion 限流/5xx | `fetchJson` 对 429/5xx 重试（最多 2 次，递增延迟） |
 | 快照过大 | 512 KB 预算裁剪消息回放，避免超过 1 MB 被杀连接 |
+| 网页 AI 站点改版 | Stop 选择器/aria-busy 失配时退回 online，不误报生成中；心跳 8s 自愈 |
+| 本地 AI 端口被占用 | 8080/5000 等共用端口只在对应进程存在时探测，避免误判 |
 
 ## 7. 测试与回归
 
@@ -210,6 +225,8 @@ notionPush
 - `tests/manifest.test.mjs`：跨扩展白名单与宿主 allowed_origins 一致、无通配。
 - `tests/focus-timer.test.mjs`：番茄钟/便利贴任务注册、默认状态与 v7→v9 迁移。
 - `tests/sticky-bridge.test.mjs`：便利贴跨扩展消息的错误映射。
+- `tests/webai.test.mjs`：网页 AI 注册表、域名匹配、content script 注入覆盖。
+- `tests/ai-probe.test.mjs`：本地 AI 模型名提取与 detail 格式化。
 - `scripts/check.mjs`：manifest/JSON、资源引用、白名单、widget registry。
 
 在受限环境中 `node --test tests/` 可能因测试 runner 子进程管道被拦截而 `spawn EPERM`；
@@ -219,8 +236,11 @@ notionPush
 
 - **新增 widget**：`newtab/js/widgets/<key>.js` → `registry.js` 注册 → `widgets.css` 样式 →
   如需老用户自动获得则升 `SCHEMA_VERSION` 并写迁移。
-- **新增 AI 应用**：`host.mjs` 的 `APPS` 加一条；日志型应用补 adapter；`aimanager.js` 的
-  `APP_ICONS` 加图标；UIA 白名单按需加到 `dialogs.ps1`。
+- **新增本机 AI**：`host.mjs` 的 `APPS` 加 `procs`/`probe`/`cmdPatterns`；日志型应用补 adapter；
+  `aimanager.js` 的 `APP_ICONS` 加图标；UIA 白名单按需加到 `dialogs.ps1`。模型名解析复用
+  `ai_manager_host/probe.mjs`。
+- **新增网页 AI**：`newtab/js/webai-sites.js` 加站点元数据 + `newtab/manifest.json` 的
+  `content-webai` matches；不需要改 host；`tests/webai.test.mjs` 会校验注入覆盖。
 - **新增便利贴分类**：`extension/lib/categories.js`；文件目录/筛选/Notion select 自动跟随。
 - **新增宿主事件**：`host.mjs` `post({type})` → `newtab/background.js` 透传 → `aimanager.js`/`sysmonitor.js` 处理；
   大消息注意 1 MB 上限与快照预算。

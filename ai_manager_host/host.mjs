@@ -21,10 +21,22 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { extractModelInfo, formatAppDetail } from './probe.mjs';
 import { fileURLToPath } from 'node:url';
 
 const HOST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const IS_WIN = process.platform === 'win32';
+
+// 轮询节奏。host 是常驻进程，所有间隔都按“够用即可”设置：
+// - 进程扫描 / 日志 / 弹窗都是低频事件，不必 1s 级；
+// - 会话统计按文件 mtime 缓存，但仍限制整文件重扫频率；
+// - sysmon 单次 PowerShell 约 1.6s，页面可见时 5s 一轮，后台 15s。
+const PROCESS_SCAN_INTERVAL_MS = 8000;
+const LOG_POLL_INTERVAL_MS = 1500;
+const DIALOG_SCAN_INTERVAL_MS = 10000;
+const SESSION_STATS_MIN_MS = 5000;
+const SYSMON_FAST_MS = 5000;
+const SYSMON_SLOW_MS = 15000;
 
 // ---------- Native Messaging 帧协议 ----------
 let inBuf = Buffer.alloc(0);
@@ -55,12 +67,25 @@ const APPS = [
   // ChatGPT 桌面版 = OpenAI Codex：日志在 ~/.codex/sessions，进程名 ChatGPT.exe / Codex.exe
   // （进程只作在线检测；会话 jsonl 在应用退出后仍留存，日志 adapter 自身可判定状态）
   { id: 'codex', name: 'ChatGPT 桌面版', kind: 'log', procs: ['ChatGPT.exe', 'Codex.exe'], detail: '会话日志 ~/.codex/sessions' },
-  { id: 'ollama', name: 'Ollama', kind: 'http', procs: ['ollama.exe'], probe: 'http://127.0.0.1:11434/api/tags', detail: '本地 API :11434' },
-  { id: 'lmstudio', name: 'LM Studio', kind: 'http', procs: ['lms.exe'], probe: 'http://127.0.0.1:1234/v1/models', detail: '本地 API :1234' },
+  { id: 'ollama', name: 'Ollama', kind: 'http', procs: ['ollama.exe'], probe: { url: 'http://127.0.0.1:11434/api/tags' }, detail: '本地 API :11434' },
+  { id: 'lmstudio', name: 'LM Studio', kind: 'http', procs: ['lms.exe'], probe: { url: 'http://127.0.0.1:1234/v1/models' }, detail: '本地 API :1234' },
+  // 8080 常被多个服务共用：只在对应进程存在时探测，避免把别的服务误判成自己
+  { id: 'llamacpp', name: 'llama.cpp', kind: 'http', procs: ['llama-server.exe', 'llama-server'], probe: { url: 'http://127.0.0.1:8080/v1/models' }, probeWithProcOnly: true, detail: '本地 API :8080' },
+  { id: 'vllm', name: 'vLLM', kind: 'http', procs: ['vllm.exe'], cmdPatterns: [/\bvllm\b/i], probe: { url: 'http://127.0.0.1:8000/v1/models' }, detail: '本地 API :8000' },
+  { id: 'localai', name: 'LocalAI', kind: 'http', procs: ['local-ai.exe', 'localai.exe'], probe: { url: 'http://127.0.0.1:8080/v1/models' }, probeWithProcOnly: true, detail: '本地 API :8080' },
+  { id: 'koboldcpp', name: 'KoboldCpp', kind: 'http', procs: ['koboldcpp.exe'], probe: { url: 'http://127.0.0.1:5001/api/v1/model' }, detail: '本地 API :5001' },
+  { id: 'gpt4all', name: 'GPT4All', kind: 'http', procs: ['gpt4all.exe'], probe: { url: 'http://127.0.0.1:4891/v1/models' }, detail: '本地 API :4891' },
+  { id: 'jan', name: 'Jan', kind: 'http', procs: ['jan.exe'], probe: { url: 'http://127.0.0.1:1337/v1/models' }, detail: '本地 API :1337' },
+  { id: 'anythingllm', name: 'AnythingLLM', kind: 'http', procs: ['anythingllm.exe'], probe: { url: 'http://127.0.0.1:3001/api/ping' }, detail: '本地服务 :3001' },
+  { id: 'textgen', name: 'text-generation-webui', kind: 'http', cmdPatterns: [/text-generation-webui/i, /webui\.py/i], probe: { url: 'http://127.0.0.1:5000/v1/models' }, probeWithProcOnly: true, detail: '本地 API :5000' },
+  { id: 'cherry-studio', name: 'Cherry Studio', kind: 'proc', procs: ['cherry studio.exe', 'cherry-studio.exe'], detail: '桌面 AI 客户端' },
+  { id: 'chatbox', name: 'Chatbox', kind: 'proc', procs: ['chatbox.exe'], detail: '桌面 AI 客户端' },
   { id: 'claude-desktop', name: 'Claude 桌面版', kind: 'proc', procs: ['claude.exe'] },
+  { id: 'cursor', name: 'Cursor', kind: 'proc', procs: ['cursor.exe'], detail: 'AI IDE' },
 ];
 
 const appStatus = new Map();   // id → 'online' | 'tasking' | 'offline'
+const appInfo = new Map();     // id → { models: string[], total: number }（HTTP 探测到的模型信息）
 const recent = [];             // 最近消息（快照回放用，上限 50——页面只用于会话状态机，不再渲染历史）
 const openDialogs = new Map(); // hwnd → dialog 对象
 
@@ -88,7 +113,7 @@ function handleRequest(msg) {
       post(buildSnapshot());
       if (lastSys) post({ type: 'sys', metrics: lastSys }); // 快照附带当前资源数据
       break;
-    case 'sysmon': // 页面开关：有面板订阅时 3s 高频，全部断开后 15s 低频
+    case 'sysmon': // 页面开关：有面板订阅时 5s 高频，全部断开后 15s 低频
       setSysmonFast(!!msg.fast);
       break;
     case 'dialog:respond':
@@ -266,7 +291,22 @@ function sessionsList() {
     .sort((a, b) => String(b.lastTs).localeCompare(String(a.lastTs)));
 }
 
+let sessionStatsTimer = null;
+let lastSessionStatsAt = 0;
+
+// 日志每次推进都刷新统计会反复整文件读取活跃 jsonl；改为 5s 节流。
+function scheduleSessionStats() {
+  if (sessionStatsTimer) return;
+  const wait = Math.max(0, SESSION_STATS_MIN_MS - (Date.now() - lastSessionStatsAt));
+  sessionStatsTimer = setTimeout(() => {
+    sessionStatsTimer = null;
+    refreshSessionStats();
+  }, wait);
+  sessionStatsTimer.unref?.();
+}
+
 function refreshSessionStats() {
+  lastSessionStatsAt = Date.now();
   try {
     const cands = listActiveSessions();
     const next = new Map();
@@ -291,7 +331,27 @@ function refreshSessionStats() {
 // ---------- 进程扫描 ----------
 // 用 Get-CimInstance + JSON（wmic 已废弃且 CSV 不处理命令行里的逗号，会串列）
 let lastAppsJson = '';
+function matchesProcess(app, names, cmdlines) {
+  if (app.procs && app.procs.some(p => names.has(String(p).toLowerCase()))) return true;
+  if (app.cmdPatterns && app.cmdPatterns.some(re => cmdlines.some(c => re.test(c)))) return true;
+  return false;
+}
+
+let processScanBusy = false;
+
+// 进程扫描会启动 PowerShell，单次可能接近 8s 超时；用 busy 标记避免上一轮
+// 未结束时下一轮又启动，导致 PowerShell 进程重叠、apps 消息乱序。
 async function scanProcesses() {
+  if (processScanBusy) return;
+  processScanBusy = true;
+  try {
+    await scanProcessesOnce();
+  } finally {
+    processScanBusy = false;
+  }
+}
+
+async function scanProcessesOnce() {
   if (!IS_WIN) return;
   const r = await run('powershell', ['-NoProfile', '-Command',
     '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object Name,CommandLine | ConvertTo-Json -Compress']);
@@ -311,37 +371,57 @@ async function scanProcesses() {
   // Codex（ChatGPT 桌面版）：ChatGPT.exe 或 Codex.exe
   const codexRunning = names.has('chatgpt.exe') || names.has('codex.exe');
 
-  const next = [];
-  for (const app of APPS) {
+  // 并行探测，避免新增多个 HTTP 应用后每轮 8s 被串行 1.2s 超时拖慢
+  const next = await Promise.all(APPS.map(async (app) => {
     let running = false;
     if (app.kind === 'log' && app.id === 'claude-code') running = claudeCodeRunning;
     else if (app.kind === 'log' && app.id === 'codex') running = codexRunning;
-    if (app.procs) running = running || app.procs.some(p => names.has(p.toLowerCase()));
-    if (app.kind === 'http') running = running || await probeHttp(app.probe);
-    if (running) {
-      // 在线时：tasking 状态由日志 adapter 维护（emitMessage / 看门狗即时推送），
-      // 这里只做 offline 检测和 tasking 的兜底上报
-      const cur = appStatus.get(app.id);
-      next.push({ ...app, status: cur === 'tasking' ? 'tasking' : 'online' });
-    } else {
-      // 进程退出：任务必已结束，同步复位 busy 防止「幽灵 tasking」
-      if (app.id === 'claude-code' && busy) { busy = false; appStatus.set('claude-code', 'online'); }
-      if (app.id === 'codex' && codexBusy) { codexBusy = false; appStatus.set('codex', 'online'); }
-      next.push({ ...app, status: 'offline' });
+    if (matchesProcess(app, names, cmdlines)) running = true;
+
+    let probeInfo = null;
+    if (app.probe && (!app.probeWithProcOnly || running)) {
+      probeInfo = await probeHttp(app.probe);
     }
-  }
-  const json = JSON.stringify(next.map(a => ({ id: a.id, status: a.status })));
+    if (probeInfo?.ok) running = true;
+
+    if (running) {
+      if (probeInfo?.ok) appInfo.set(app.id, { models: probeInfo.models, total: probeInfo.modelCount });
+      else appInfo.delete(app.id);
+      // 在线时：tasking 状态由日志 adapter 维护，这里只做 offline 检测和兜底
+      const cur = appStatus.get(app.id);
+      const status = cur === 'tasking' ? 'tasking' : 'online';
+      appStatus.set(app.id, status);
+      return publicApp(app, status);
+    }
+
+    // 进程退出：任务必已结束，同步复位 busy 防止「幽灵 tasking」
+    appInfo.delete(app.id);
+    if (app.id === 'claude-code' && busy) busy = false;
+    if (app.id === 'codex' && codexBusy) codexBusy = false;
+    appStatus.set(app.id, 'offline');
+    return publicApp(app, 'offline');
+  }));
+
+  const json = JSON.stringify(next.map(a => ({ id: a.id, status: a.status, detail: a.detail })));
   if (json !== lastAppsJson) {
     lastAppsJson = json;
     post({ type: 'apps', apps: next });
   }
 }
 
-async function probeHttp(url) {
+async function probeHttp(probe) {
+  const url = typeof probe === 'string' ? probe : probe && probe.url;
+  if (!url) return { ok: false, models: [] };
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(1200) });
-    return res.ok;
-  } catch { return false; }
+    if (!res.ok) return { ok: false, models: [], modelCount: 0 };
+    let data = null;
+    try { data = await res.json(); } catch { /* 非 JSON 也认为在线 */ }
+    const info = extractModelInfo(data);
+    return { ok: true, models: info.names, modelCount: info.total };
+  } catch {
+    return { ok: false, models: [], modelCount: 0 };
+  }
 }
 
 // ---------- Claude Code 日志 adapter ----------
@@ -410,8 +490,8 @@ function pollClaudeLog() {
         const ev = parseClaudeLine(line);
         if (ev) emitMessage(ev);
       }
-      // 日志有推进 → 同步刷新会话统计（token/模型随输出实时更新）
-      refreshSessionStats();
+      // 日志有推进 → 节流刷新会话统计（token/模型随输出更新）
+      scheduleSessionStats();
     } finally {
       try { fs.closeSync(fd); } catch { /* 已关 */ }
     }
@@ -479,8 +559,18 @@ function checkBusyWatchdog() {
 }
 
 // 组装当前应用状态列表（apps 事件与 snapshot 共用）
+function publicApp(app, status) {
+  const info = appInfo.get(app.id);
+  return {
+    id: app.id,
+    name: app.name,
+    status,
+    detail: formatAppDetail(app.detail, info && info.models, info && info.total),
+  };
+}
+
 function currentAppsList() {
-  return APPS.map(app => ({ id: app.id, name: app.name, status: appStatus.get(app.id) || 'offline', detail: app.detail }));
+  return APPS.map(app => publicApp(app, appStatus.get(app.id) || 'offline'));
 }
 
 // ---------- Codex（ChatGPT 桌面版）日志 adapter ----------
@@ -535,8 +625,8 @@ function pollCodexLog() {
         const ev = parseCodexLine(line);
         if (ev) emitMessage(ev);
       }
-      // 日志有推进 → 同步刷新会话统计（token/模型随输出实时更新）
-      refreshSessionStats();
+      // 日志有推进 → 节流刷新会话统计（token/模型随输出更新）
+      scheduleSessionStats();
     } finally {
       try { fs.closeSync(fd); } catch { /* 已关 */ }
     }
@@ -626,6 +716,7 @@ function run(cmd, args) {
 
 // ---------- 系统资源监视（sysmon.ps1 轮询） ----------
 // 只有页面在线时才需要高频刷新；没有订阅时降频到 15s 省 CPU（sysmon.ps1 单次 ~1.6s）。
+// 高频也从 3s 降到 5s，避免 PowerShell 常驻占用。
 let sysmonBusy = false;
 let sysmonTimer = null;
 let sysmonFast = false; // 页面请求快速模式（ai:subscribe 时开）
@@ -648,7 +739,7 @@ async function pollSysmon() {
 
 function scheduleSysmon() {
   clearInterval(sysmonTimer);
-  const period = sysmonFast ? 3000 : 15000;
+  const period = sysmonFast ? SYSMON_FAST_MS : SYSMON_SLOW_MS;
   sysmonTimer = setInterval(pollSysmon, period);
   sysmonTimer.unref();
 }
@@ -661,17 +752,17 @@ function setSysmonFast(fast) {
 }
 
 // ---------- 主循环 ----------
-// 轮询节奏：进程扫描 6s、日志 1.2s、弹窗 8s、看门狗 30s、sysmon 3s（无页面订阅 15s）
+// 轮询节奏：进程扫描 8s、日志 1.5s、弹窗 10s、看门狗 30s、sysmon 5s（无页面订阅 15s）
 // ——每轮都要拉起 PowerShell（进程开销大），全 .unref() 让空转不阻止退出。
 scanProcesses();
 pollClaudeLog();
 pollCodexLog();
 refreshSessionStats(); // 启动即推一次会话统计（页面打开即有数据）
 pollSysmon();
-setInterval(scanProcesses, 6000).unref();
-setInterval(pollClaudeLog, 1200).unref();
-setInterval(pollCodexLog, 1200).unref();
-setInterval(scanDialogs, 8000).unref(); // 弹窗是低频事件，8s 足够灵敏
+setInterval(scanProcesses, PROCESS_SCAN_INTERVAL_MS).unref();
+setInterval(pollClaudeLog, LOG_POLL_INTERVAL_MS).unref();
+setInterval(pollCodexLog, LOG_POLL_INTERVAL_MS).unref();
+setInterval(scanDialogs, DIALOG_SCAN_INTERVAL_MS).unref(); // 弹窗是低频事件，10s 足够灵敏
 setInterval(checkBusyWatchdog, 30000).unref();
 scheduleSysmon();
 post({ type: 'host:ready' });
