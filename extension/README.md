@@ -108,7 +108,7 @@ Manifest V3 扩展，用便利贴记录程序员日常工作信息：测试/正�
 
 ## 备份
 
-设置页 →「备份导入」：选择导出的 JSON 文件恢复（覆盖当前数据）。Markdown 导出用于阅读/归档。
+设置页 →「备份导入」：选择导出的 JSON 文件恢复（覆盖当前数据）。导入前会二次确认并自动把当前数据备份到 `chrome.storage.local` 的 `notesBackup`；也可以点「恢复最近一次自动备份」。Notion 拉取和手动全量文件夹同步同样会先备份/确认，Notion 返回 0 条时不会清空本地数据。Markdown 导出用于阅读/归档。
 
 ## 数据存储
 
@@ -117,7 +117,7 @@ Manifest V3 扩展，用便利贴记录程序员日常工作信息：测试/正�
 | 主存储 | `chrome.storage.local` | 唯一可信源 |
 | 本地文件 | File System Access API | 镜像（`.md`） |
 | 云 | Notion API | 镜像（database 行） |
-| 备份 | `chrome.downloads` | JSON/Markdown 文件 |
+| 备份 | `chrome.storage.local` + `chrome.downloads` | 最近一次自动备份 + JSON/Markdown 文件 |
 
 ## 目录结构
 

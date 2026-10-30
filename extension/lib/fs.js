@@ -133,7 +133,13 @@ export async function deleteNoteFile(note) {
 //   1. 只扫描/清理 categories.js 中定义的分类目录；
 //   2. 只清理文件名形如 UUID.md 的文件（本扩展生成的命名）；
 //   3. 其他目录、非 .md 文件、非 UUID 命名的文件一律不碰。
-export async function syncFolderAll(notes) {
+export async function syncFolderAll(notes, { allowEmpty = false } = {}) {
+  if (!Array.isArray(notes)) return { ok: false, reason: '便利贴数据格式不正确' };
+  // 空数组通常意味着上游读取失败，而不是用户真的删光了便利贴。
+  // 默认拒绝清理，避免一次异常把所有镜像文件删掉；确需清空时显式传 allowEmpty。
+  if (notes.length === 0 && !allowEmpty) {
+    return { ok: false, reason: '便利贴为空，已跳过文件夹清理' };
+  }
   const handle = await getFolderHandle();
   if (!handle) return { ok: false, reason: '未绑定文件夹' };
   if (!(await ensurePermission(handle))) return { ok: false, reason: '无文件夹权限' };

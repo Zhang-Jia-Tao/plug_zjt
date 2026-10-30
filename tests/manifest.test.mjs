@@ -26,3 +26,16 @@ test('三个扩展 manifest 版本号可解析', () => {
     assert.match(m.version, /^\d+\.\d+\.\d+$/);
   }
 });
+
+test('host 清单是可移植模板，安装脚本同时注册 Chrome 与 Edge', () => {
+  const host = readJson('ai_manager_host/com.zjt.ai_manager.json');
+  assert.equal(host.path, '<HOST_DIR>/run-host.bat');
+
+  const install = fs.readFileSync(path.join(root, 'ai_manager_host/install-host.bat'), 'utf8');
+  assert.match(install, /com\.zjt\.ai_manager\.local\.json/);
+  assert.match(install, /Software\\Google\\Chrome\\NativeMessagingHosts/);
+  assert.match(install, /Software\\Microsoft\\Edge\\NativeMessagingHosts/);
+
+  const gitignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8');
+  assert.match(gitignore, /com\.zjt\.ai_manager\.local\.json/);
+});

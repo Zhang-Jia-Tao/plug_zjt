@@ -2,7 +2,8 @@
 // 职责：消息路由、Notion API 执行、chrome.alarms 提醒、chrome.notifications、chrome.downloads 导出
 // 所有状态在 chrome.storage，SW 重启可重建。不在内存缓存数据。
 
-import { getAllNotes, getNote, saveNote, deleteNote, getSettings, setSettings, replaceAllNotes, sortNotes, reorderNotes, markReminded, toggleTask } from './lib/store.js';
+import { getAllNotes, getNote, saveNote, deleteNote, getSettings, setSettings, replaceAllNotes, sortNotes, reorderNotes, markReminded, toggleTask, backupNotes, getBackupInfo, restoreBackup } from './lib/store.js';
+import { extractImportNotes } from './lib/import.js';
 import * as notion from './lib/notion.js';
 import { getCategory } from './lib/categories.js';
 
@@ -203,6 +204,10 @@ async function handleMessage(msg, sender) {
       if (!s.notionToken || !s.notionDatabaseId) throw new Error('未配置 Notion');
       const r = await notion.pullAll(s.notionToken, s.notionDatabaseId);
       if (!r.ok) throw new Error(r.message);
+      if (!Array.isArray(r.notes) || r.notes.length === 0) {
+        // 数据库为空/ID 配错时，拉取 0 条不应清空本地数据。
+        throw new Error('Notion 没有返回任何便利贴，已保留本地数据');
+      }
       // 合并：以 NoteID 去重，本地已有则保留本地 id 的 createdAt，更新其余字段
       const local = await getAllNotes();
       const localMap = Object.fromEntries(local.map(n => [n.id, n]));
@@ -215,7 +220,7 @@ async function handleMessage(msg, sender) {
         // 自定义标签：Notion 有 CustomFields 列则用云端值，为空则保留本地
         fields: (Array.isArray(n.fields) && n.fields.length) ? n.fields : (localMap[n.id]?.fields ?? []),
       }));
-      await replaceAllNotes(merged);
+      await replaceAllNotes(merged, { reason: 'notion-pull', allowEmpty: false });
       await setSettings({ notionLastSync: new Date().toISOString() });
       return { pulled: merged.length };
     }
@@ -264,10 +269,22 @@ async function handleMessage(msg, sender) {
     }
 
     case 'importJson': {
-      // payload.json 为解析后的对象
-      const notes = payload?.notes || [];
-      await replaceAllNotes(notes);
-      return { imported: notes.length };
+      // 兼容旧版调用 { json: { notes } } 与新版 { notes }；任何异常都不应清空现有数据。
+      const notes = extractImportNotes(payload);
+      await replaceAllNotes(notes, { reason: 'import', allowEmpty: false });
+      return { imported: notes.length, backupAt: new Date().toISOString() };
+    }
+
+    // ---- 破坏性操作备份 ----
+    case 'backupNotes':
+      return await backupNotes(payload?.reason || 'manual');
+
+    case 'getBackupInfo':
+      return await getBackupInfo();
+
+    case 'restoreBackup': {
+      const r = await restoreBackup();
+      return r;
     }
 
     default:

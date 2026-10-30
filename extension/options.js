@@ -1,5 +1,6 @@
 // options.js — 设置页（ES module）
 import { pickFolder, clearFolder, getFolderHandle, syncFolderAll } from './lib/fs.js';
+import { extractNotesFromBackup } from './lib/import.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -23,6 +24,20 @@ async function load() {
     ? new Date(s.notionLastSync).toLocaleString('zh-CN')
     : '从未';
   await refreshFolder();
+  await refreshBackupInfo();
+}
+
+async function refreshBackupInfo() {
+  const el = $('#backup-info');
+  if (!el) return;
+  try {
+    const b = await send('getBackupInfo');
+    el.textContent = b
+      ? `最近备份：${b.count} 条 · ${new Date(b.at).toLocaleString('zh-CN')} · ${b.reason}`
+      : '暂无自动备份';
+  } catch {
+    el.textContent = '';
+  }
 }
 
 async function refreshFolder() {
@@ -92,6 +107,8 @@ async function onSyncFolder() {
   el.textContent = '同步中…'; el.className = 'value';
   const notes = await send('getNotes');
   try {
+    if (notes.length) await send('backupNotes', { reason: 'folder-sync' });
+    await refreshBackupInfo();
     const r = await syncFolderAll(notes);
     if (r.ok) setResult(el, `✓ 已写入 ${r.written}/${r.total}，清理 ${r.deleted || 0} 个旧文件`, true);
     else setResult(el, '✗ ' + (r.reason || '失败'), false);
@@ -107,13 +124,42 @@ async function onImport() {
   try {
     const text = await file.text();
     const obj = JSON.parse(text);
-    const r = await send('importJson', { json: obj });
-    setResult($('#import-result'), `✓ 已导入 ${r.imported} 条`, true);
-    // 同步到文件夹
+    const notes = extractNotesFromBackup(obj);
+    if (notes.length === 0) throw new Error('导入文件没有便利贴，已保留当前数据');
+    const current = await send('getNotes');
+    const ok = confirm(
+      `将用 ${notes.length} 条便利贴覆盖当前 ${current.length} 条，` +
+      '并在绑定文件夹时清理其中的旧镜像文件。\n\n导入前会自动备份当前数据。继续？'
+    );
+    if (!ok) return;
+    const r = await send('importJson', { notes });
+    setResult($('#import-result'), `✓ 已导入 ${r.imported} 条（已备份）`, true);
+    await refreshBackupInfo();
+    // 同步到文件夹；空数组时 syncFolderAll 会拒绝清理，避免误删镜像。
+    const latest = await send('getNotes');
+    try { await syncFolderAll(latest); } catch {}
+  } catch (e) {
+    setResult($('#import-result'), '✗ ' + e.message, false);
+  }
+}
+
+async function onRestoreBackup() {
+  const el = $('#import-result');
+  try {
+    const info = await send('getBackupInfo');
+    if (!info) { setResult(el, '没有可恢复的备份', false); return; }
+    const ok = confirm(
+      `将恢复 ${info.count} 条便利贴（备份时间 ${new Date(info.at).toLocaleString('zh-CN')}），` +
+      '当前数据会先自动备份。继续？'
+    );
+    if (!ok) return;
+    const r = await send('restoreBackup');
+    setResult(el, `✓ 已恢复 ${r.restored} 条`, true);
+    await refreshBackupInfo();
     const notes = await send('getNotes');
     try { await syncFolderAll(notes); } catch {}
   } catch (e) {
-    setResult($('#import-result'), '✗ ' + e.message, false);
+    setResult(el, '✗ ' + e.message, false);
   }
 }
 
@@ -123,6 +169,7 @@ $('#btn-bind').addEventListener('click', onBind);
 $('#btn-unbind').addEventListener('click', onUnbind);
 $('#btn-sync-folder').addEventListener('click', onSyncFolder);
 $('#btn-import').addEventListener('click', onImport);
+$('#btn-restore-backup').addEventListener('click', onRestoreBackup);
 // token/db 失焦自动保存
 $('#notion-token').addEventListener('blur', saveNotionSettings);
 $('#notion-db').addEventListener('blur', saveNotionSettings);

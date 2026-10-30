@@ -925,13 +925,13 @@ async function onSync() {
     chrome.runtime.openOptionsPage();
     return;
   }
-  const op = prompt('同步方向：1 = 推送到 Notion（本地→云），2 = 从 Notion 拉取（云→本地，会覆盖本地）。默认 1', '1');
+  const op = prompt('同步方向：1 = 推送到 Notion（本地→云），2 = 从 Notion 拉取（云→本地，会覆盖本地，覆盖前自动备份）。默认 1', '1');
   if (op === null) return;
   toast('同步中…');
   try {
     if (op === '2') {
       const r = await send('notionPull');
-      toast(`已拉取 ${r.pulled} 条`);
+      toast(`已拉取 ${r.pulled} 条（已备份本地）`);
       await render();
     } else {
       const r = await send('notionPush');

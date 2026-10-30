@@ -29,11 +29,11 @@ export function initSysMonitor() {
   connect();
   bindRefresh();
   bindVisibility();
-  // 数据停滞指示：超过 12s 没收到 sys 事件把呼吸点变灰
+  // 数据停滞指示：host 高频轮询为 5s，超过 20s 没收到 sys 事件才把呼吸点变灰
   setInterval(() => {
     const dot = document.getElementById('sys-live');
     if (!dot) return;
-    dot.classList.toggle('stale', !lastUpdated || Date.now() - lastUpdated > 12000);
+    dot.classList.toggle('stale', !lastUpdated || Date.now() - lastUpdated > 20000);
     dot.title = lastUpdated
       ? `更新于 ${new Date(lastUpdated).toLocaleTimeString('zh-CN', { hour12: false })}`
       : '等待数据';
@@ -54,12 +54,12 @@ function bindRefresh() {
   });
 }
 
-// 页面切到后台时把 host 轮询降到 15s，回到前台恢复 3s，减少常驻 CPU
+// 页面切到后台时把 host 轮询降到 15s，回到前台恢复 5s，减少常驻 CPU
 function bindVisibility() {
   document.addEventListener('visibilitychange', () => {
     setFast(!document.hidden);
     if (!document.hidden) {
-      // 回到前台立即取一份最新快照，不必等下一轮 3s
+      // 回到前台立即取一份最新快照，不必等下一轮 5s
       chrome.runtime.sendMessage({ action: 'ai:query' }, () => { void chrome.runtime.lastError; });
     }
   });
@@ -87,7 +87,7 @@ function connect() {
       connect();
     }, reconnectDelay);
   });
-  // 告知 host：监视面板在线，sysmon 切 3s 高频；
+  // 告知 host：监视面板在线，sysmon 切 5s 高频；
   // 页面在后台时保持 15s 低频（host 侧对所有订阅者共享一份）
   setFast(!document.hidden);
 }

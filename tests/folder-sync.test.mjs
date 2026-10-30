@@ -1,7 +1,7 @@
 // 回归测试：全量同步的清理范围（防止误删用户目录中的文件）
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planFolderPrune, buildExpectedFileMap } from '../extension/lib/fs.js';
+import { planFolderPrune, buildExpectedFileMap, syncFolderAll } from '../extension/lib/fs.js';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -47,4 +47,10 @@ test('空 notes 时只清理已知分类目录中的 UUID.md', () => {
   assert.deepEqual(planFolderPrune([], existingByDir), [
     { dirName: 'url', fileName: `${A}.md` },
   ]);
+});
+
+test('syncFolderAll 默认拒绝用空数组清理文件夹', async () => {
+  const r = await syncFolderAll([]);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /空/);
 });

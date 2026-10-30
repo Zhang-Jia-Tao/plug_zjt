@@ -112,8 +112,11 @@ if (registry) {
 }
 
 // 6. host 安装清单里的 launcher 存在
+// 版本库里的 com.zjt.ai_manager.json 是可移植模板（<HOST_DIR> 占位），
+// 真正的绝对路径由 install-host.bat 写到 gitignored 的 .local.json。
 if (host?.path) {
-  exists(host.path);
+  if (host.path.includes('<HOST_DIR>')) exists('ai_manager_host/run-host.bat');
+  else exists(host.path);
   note('host launcher');
 }
 
