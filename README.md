@@ -6,7 +6,7 @@
 |------|------|------|
 | 可定制新标签页 | `newtab/` | 新标签页小组件、书签栏、本地目录树、AI 应用管理器、系统资源监视 |
 | 程序员便利贴 | `extension/` | 侧边栏便利贴：分类记录、提醒、文件夹同步、Notion 云同步 |
-| AI 管理器本地宿主 | `ai_manager_host/` | Native Messaging host：枚举本机 AI 应用/模型、读会话日志、点白名单弹窗、采集系统指标；网页 AI 状态由 newtab 内容脚本采集 |
+| AI 管理器本地宿主 | `ai_manager_host/` | Native Messaging host：枚举本机 AI 应用/模型、维护任务生命周期、增量读取/解码会话日志、点白名单弹窗、采集系统指标；网页 AI 状态由 newtab 内容脚本采集 |
 
 三者关系：
 
@@ -62,8 +62,8 @@ Native Messaging 注册表（无需管理员）。版本库里的 `com.zjt.ai_ma
 
 ### 新标签页（`newtab/`）
 
-- **小组件网格**：时间日历、搜索、常用网站、便利贴任务、番茄钟、本地音乐；支持拖拽排序、尺寸切换、编辑模式。
-- **AI 应用管理器**：Claude Code / Codex（ChatGPT 桌面版）/ Ollama / LM Studio / Claude 桌面版的状态、会话 token 统计、白名单弹窗确认。
+- **小组件网格**：时间日历、搜索、常用网站、便利贴任务、番茄钟、本地音乐、Java 终极笔记 · 学习台；支持拖拽排序、尺寸切换、编辑模式。
+- **AI 应用管理器**：Claude Code / Codex（ChatGPT 桌面版）/ DeepSeek Harness / Ollama / LM Studio / Claude 桌面版的状态、实时任务大卡（阶段/耗时/阻塞/token/确认按钮）、最近完成列表（可展开、按项目/耗时/token 排序）、会话 token 统计、白名单弹窗确认。
 - **响应式工作台**：左右面板可在工具条中开关；宽屏停靠、窄屏改抽屉；网格按可用宽度自动 4/3/2/1 列，避免侧栏覆盖卡片。
 - **系统资源监视**：CPU、内存、交换、磁盘、温度、GPU/显存；页面在后台自动降频。
 - **本地目录树**：任意网页唤出侧栏，浏览/编辑本地文件，复制粘贴走 offscreen 文档。
@@ -112,7 +112,7 @@ plug_zjt/
 │   ├── js/
 │   │   ├── main.js          # 启动、设置面板、主题/背景、面板停靠/抽屉
 │   │   ├── layout.js        # 布局断点判定（可单测）
-│   │   ├── store.js         # newtab_state 读写 + schema 迁移（v9）
+│   │   ├── store.js         # newtab_state 读写 + schema 迁移（v10）
 │   │   ├── grid.js          # 组件渲染/拖拽/尺寸/编辑
 │   │   ├── aimanager.js     # AI 面板：本机状态 + 网页 AI + 会话统计
 │   │   ├── webai-sites.js   # 网页 AI 站点注册表

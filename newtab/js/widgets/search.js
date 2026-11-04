@@ -18,7 +18,7 @@ const ENGINES = [
 
 // AI 查询入口：q 模板存在时支持把搜索词带过去；豆包/DeepSeek/Gemini 网页版
 // 不支持 URL 直带提问，点击直接打开对话页。
-// 图标：优先站点真实 favicon，失败回退品牌色首字母（与书签栏/磁贴同套路）。
+// 图标：优先站点自身 favicon，其次 Chrome 缓存，失败回退品牌色首字母。
 const AI_PROVIDERS = [
   { value: 'doubao',   label: '豆包',     icon: '🤖', url: 'https://www.doubao.com/chat/', favUrl: 'https://www.doubao.com/' },
   { value: 'deepseek', label: 'DeepSeek', icon: '🐋', url: 'https://chat.deepseek.com/' },
@@ -45,6 +45,62 @@ export default {
       <div class="search-brand">
         <img class="search-brand-img" src="../img/brand.png" alt="可定制新标签页" />
       </div>
+      <!-- 搜索卡片上缘的两只小猫：左边站着伸懒腰，右边躺着打盹。
+           纯内联 SVG + CSS 动画，不额外发图片请求，也不挡输入框点击。 -->
+      <div class="search-cats" aria-hidden="true">
+        <span class="search-cat search-cat-stand">
+          <svg viewBox="0 0 56 48" width="52" height="45" role="presentation">
+            <g class="cat-tail-swing">
+              <path d="M36 38c8 2 14-3 12-12" fill="none" stroke="#5d3b24" stroke-width="5" stroke-linecap="round" />
+              <path d="M36 38c8 2 14-3 12-12" fill="none" stroke="#e89a55" stroke-width="3" stroke-linecap="round" />
+            </g>
+            <path d="M28 45c-8 0-13-5-13-13V22c0-8 5-13 13-13s13 5 13 13v10c0 8-5 13-13 13z" fill="#efa45f" stroke="#5d3b24" stroke-width="2" />
+            <path d="M28 31c-5 0-8 4-8 9 0 3 3 5 8 5s8-2 8-5c0-5-3-9-8-9z" fill="#fff1dc" />
+            <ellipse cx="21" cy="43" rx="5" ry="3" fill="#fff1dc" stroke="#5d3b24" stroke-width="1.6" />
+            <ellipse cx="35" cy="43" rx="5" ry="3" fill="#fff1dc" stroke="#5d3b24" stroke-width="1.6" />
+            <g class="cat-head-tilt">
+              <path d="M17 12 15 2l10 6z" fill="#efa45f" stroke="#5d3b24" stroke-width="2" stroke-linejoin="round" />
+              <path d="M39 12 41 2 31 8z" fill="#efa45f" stroke="#5d3b24" stroke-width="2" stroke-linejoin="round" />
+              <path d="M19 8l-2-4 4 2z" fill="#f7c6a3" />
+              <path d="M37 8l2-4-4 2z" fill="#f7c6a3" />
+              <circle cx="28" cy="16" r="11" fill="#efa45f" stroke="#5d3b24" stroke-width="2" />
+              <path d="M23 9c1 1 2 2 2 3M28 8v4M33 9c-1 1-2 2-2 3" fill="none" stroke="#c97735" stroke-width="1.4" stroke-linecap="round" />
+              <ellipse class="cat-eye" cx="24" cy="16" rx="1.7" ry="2.4" fill="#3b2418" />
+              <ellipse class="cat-eye" cx="32" cy="16" rx="1.7" ry="2.4" fill="#3b2418" />
+              <path d="M28 21l-2-2h4z" fill="#e9898f" />
+              <path d="M28 21v2M25 20c-2 1-4 2-5 4M31 20c2 1 4 2 5 4" fill="none" stroke="#5d3b24" stroke-width="1.1" stroke-linecap="round" />
+            </g>
+          </svg>
+        </span>
+        <span class="search-cat search-cat-lie">
+          <svg viewBox="0 0 84 40" width="80" height="38" role="presentation">
+            <g class="cat-lie-tail">
+              <path d="M17 34C8 36 4 30 8 24c3-4 7-3 8 1" fill="none" stroke="#5d3b24" stroke-width="5" stroke-linecap="round" />
+              <path d="M17 34C8 36 4 30 8 24c3-4 7-3 8 1" fill="none" stroke="#e89a55" stroke-width="3" stroke-linecap="round" />
+            </g>
+            <path d="M14 34c-5 0-8-4-8-9 0-6 6-9 15-9h24c7 0 12 3 12 7 0 4-4 7-12 7H30c-8 0-12 1-16 4z" fill="#efa45f" stroke="#5d3b24" stroke-width="2" />
+            <path d="M19 26c4-2 11-2 16-2h11c4 0 7 1 7 3s-3 3-7 3H28c-5 0-8-1-9-4z" fill="#fff1dc" />
+            <ellipse cx="45" cy="33" rx="7" ry="3" fill="#fff1dc" stroke="#5d3b24" stroke-width="1.6" />
+            <ellipse cx="59" cy="33" rx="7" ry="3" fill="#fff1dc" stroke="#5d3b24" stroke-width="1.6" />
+            <g class="cat-head-tilt">
+              <path d="M56 14 54 4l10 6z" fill="#efa45f" stroke="#5d3b24" stroke-width="2" stroke-linejoin="round" />
+              <path d="M78 14 80 4l-10 6z" fill="#efa45f" stroke="#5d3b24" stroke-width="2" stroke-linejoin="round" />
+              <path d="M58 10l-2-4 4 2z" fill="#f7c6a3" />
+              <path d="M76 10l2-4-4 2z" fill="#f7c6a3" />
+              <circle cx="67" cy="18" r="11" fill="#efa45f" stroke="#5d3b24" stroke-width="2" />
+              <path d="M62 11c1 1 2 2 2 3M67 10v4M72 11c-1 1-2 2-2 3" fill="none" stroke="#c97735" stroke-width="1.4" stroke-linecap="round" />
+              <ellipse class="cat-eye" cx="63" cy="18" rx="1.6" ry="2.2" fill="#3b2418" />
+              <ellipse class="cat-eye" cx="71" cy="18" rx="1.6" ry="2.2" fill="#3b2418" />
+              <path d="M67 23l-2-2h4z" fill="#e9898f" />
+              <path d="M67 23v2M64 22c-2 1-4 2-5 4M70 22c2 1 4 2 5 4" fill="none" stroke="#5d3b24" stroke-width="1.1" stroke-linecap="round" />
+            </g>
+            <g class="cat-zzz">
+              <text x="76" y="10">z</text>
+              <text x="80" y="4">z</text>
+            </g>
+          </svg>
+        </span>
+      </div>
       <div class="search-bar">
         <span class="search-engine-btn" title="切换搜索引擎">
           <span class="search-engine-badge fav-wrap" style="--tab-color:${colorFor('google.com')}">
@@ -63,7 +119,7 @@ export default {
             <button type="button" class="ai-entry" data-ai="${p.value}">
               <span class="ai-entry-icon fav-wrap" style="--tab-color:${colorFor(hostOfAi(p))}">
                 <span class="fav-letter">${letterFor(hostOfAi(p))}</span>
-                ${faviconImgHtml(hostOfAi(p), { eager: true })}
+                ${faviconImgHtml(p.favUrl || p.url, { eager: true })}
               </span>
               <span class="ai-entry-name">${p.label}</span>
               ${p.q ? '<span class="ai-entry-hint">支持直接提问</span>' : ''}

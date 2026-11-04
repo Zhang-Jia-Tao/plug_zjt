@@ -1,8 +1,8 @@
 // sysmonitor.js — 左侧固定系统资源监视面板
 // 数据源复用 AI 管理器的 host 链路（ai:subscribe → SW → connectNative），
 // host 的 sysmon.ps1 轮询推送 {type:'sys', metrics:{...}} 经同一条通道广播。
-// 可视化：CPU/内存/GPU/交换/磁盘 = 横向占比条 + 数值；温度 = 数值卡（不支持时显示「不支持」）。
-// 历史迷你走势（sparkline）用纯 CSS 柱条，无图表库依赖。
+// 可视化：CPU 环形总览 + 指标卡（占比条/数值/迷你走势）；温度 = 数值卡。
+// 历史走势用纯 CSS 柱条，无图表库依赖。
 
 const HISTORY_LEN = 40;        // 走势柱条数
 // 注意：键集合必须与 METRICS 的 key 一致（漏一个会让 pushHistory 抛错，
@@ -12,13 +12,13 @@ let port = null;
 let lastMetrics = null;
 let lastUpdated = 0; // 最近一次收到 sys 事件的时间（呼吸点/摘要行用）
 
-// 指标定义：key → {label, unit, 高压阈值(变红)}
+// 指标定义：key → {label, unit, 高压阈值(变红), hint}
 const METRICS = [
-  { key: 'cpu', label: 'CPU 占用', unit: '%', warn: 80 },
-  { key: 'mem', label: '内存占用', unit: '%', warn: 90 },
-  { key: 'gpu', label: 'GPU 占用', unit: '%', warn: 90 },
-  { key: 'swap', label: '交换分区', unit: '%', warn: 60 },
-  { key: 'disk', label: '磁盘活动', unit: '%', warn: 80 },
+  { key: 'cpu', label: 'CPU 占用', unit: '%', warn: 80, hint: '处理器负载' },
+  { key: 'mem', label: '内存占用', unit: '%', warn: 90, hint: '物理内存' },
+  { key: 'gpu', label: 'GPU 占用', unit: '%', warn: 90, hint: '图形处理器' },
+  { key: 'swap', label: '交换分区', unit: '%', warn: 60, hint: '页面文件' },
+  { key: 'disk', label: '磁盘活动', unit: '%', warn: 80, hint: '读写占用' },
 ];
 
 export function initSysMonitor() {
@@ -112,13 +112,16 @@ function renderStatic() {
   const list = document.getElementById('sys-metrics');
   if (!list) return;
   const rows = METRICS.map(m => `
-    <div class="sys-row" id="sys-row-${m.key}">
-      <div class="sys-row-head">
-        <span class="sys-row-label">${m.label}</span>
+    <div class="sys-card sys-row" id="sys-row-${m.key}" data-key="${m.key}">
+      <div class="sys-card-head">
+        <span class="sys-card-label"><i class="sys-card-dot"></i>${m.label}</span>
         <span class="sys-row-val" id="sys-val-${m.key}">--</span>
       </div>
       <div class="sys-bar"><div class="sys-bar-fill" id="sys-fill-${m.key}"></div></div>
-      <div class="sys-spark" id="sys-spark-${m.key}"></div>
+      <div class="sys-card-foot">
+        <span class="sys-card-hint">${m.hint}</span>
+        <div class="sys-spark" id="sys-spark-${m.key}"></div>
+      </div>
     </div>
   `).join('');
   const temps = `
@@ -132,9 +135,28 @@ function renderStatic() {
         <span class="sys-temp-val" id="sys-gpu-temp">--</span>
       </div>
     </div>
+  `;
+  list.innerHTML = `
+    <div class="sys-hero">
+      <div class="sys-gauge" id="sys-gauge" style="--pct:0">
+        <div class="sys-gauge-inner">
+          <span class="sys-gauge-val" id="sys-gauge-val">--</span>
+          <span class="sys-gauge-unit">CPU</span>
+        </div>
+      </div>
+      <div class="sys-hero-copy">
+        <span class="sys-eyebrow">实时负载</span>
+        <strong class="sys-hero-title" id="sys-hero-title">等待数据</strong>
+        <span class="sys-hero-sub" id="sys-hero-sub">host 连接后自动刷新</span>
+      </div>
+    </div>
+    <div class="sys-section"><span>实时指标</span><span class="sys-section-meta">5 项</span></div>
+    <div class="sys-card-list">${rows}</div>
+    <div class="sys-section"><span>温度</span><span class="sys-section-meta">硬件传感器</span></div>
+    ${temps}
+    <div class="sys-section"><span>运行信息</span><span class="sys-section-meta" id="sys-update-label">--</span></div>
     <div class="sys-sub" id="sys-sub"></div>
   `;
-  list.innerHTML = rows + temps;
 }
 
 function renderValues() {
@@ -145,6 +167,7 @@ function renderValues() {
   for (const def of METRICS) {
     const valEl = document.getElementById(`sys-val-${def.key}`);
     const fillEl = document.getElementById(`sys-fill-${def.key}`);
+    const rowEl = document.getElementById(`sys-row-${def.key}`);
     if (!valEl || !fillEl) continue;
     const v = m[def.key];
     if (typeof v !== 'number' || Number.isNaN(v)) {
@@ -152,11 +175,13 @@ function renderValues() {
       valEl.classList.add('na');
       fillEl.style.width = '0%';
       fillEl.classList.remove('warn');
+      rowEl?.classList.remove('warn');
     } else {
       valEl.textContent = `${v.toFixed(0)}%`;
       valEl.classList.remove('na');
       fillEl.style.width = `${Math.min(v, 100)}%`;
       fillEl.classList.toggle('warn', v >= def.warn);
+      rowEl?.classList.toggle('warn', v >= def.warn);
     }
     renderSpark(def.key);
   }
@@ -165,26 +190,65 @@ function renderValues() {
   setTemp('sys-cpu-temp', m.cpuTemp);
   setTemp('sys-gpu-temp', m.gpuTemp);
 
-  // 摘要行：内存用量 / 交换用量 / 磁盘读写速率 / 开机时长
+  // 顶部环形总览：用 CPU 作为主指标，配一句可读的负载结论
+  const gauge = document.getElementById('sys-gauge');
+  const gaugeVal = document.getElementById('sys-gauge-val');
+  const heroTitle = document.getElementById('sys-hero-title');
+  const heroSub = document.getElementById('sys-hero-sub');
+  const cpu = m.cpu;
+  if (typeof cpu === 'number' && !Number.isNaN(cpu)) {
+    const pct = Math.max(0, Math.min(100, cpu));
+    if (gauge) {
+      gauge.style.setProperty('--pct', String(pct));
+      gauge.classList.toggle('warn', pct >= 80);
+      gauge.classList.remove('na');
+    }
+    if (gaugeVal) gaugeVal.textContent = `${pct.toFixed(0)}`;
+    if (heroTitle) heroTitle.textContent = pct >= 80 ? '高负载' : pct >= 50 ? '中等负载' : '运行平稳';
+    if (heroSub) {
+      const bits = [];
+      if (typeof m.memUsed === 'number' && typeof m.memTotal === 'number') {
+        bits.push(`内存 ${m.memUsed.toFixed(1)} / ${m.memTotal.toFixed(0)} GB`);
+      }
+      bits.push(`磁盘 ${typeof m.disk === 'number' ? `${m.disk.toFixed(0)}%` : '--'}`);
+      heroSub.textContent = bits.join(' · ');
+    }
+  } else {
+    if (gauge) {
+      gauge.style.setProperty('--pct', '0');
+      gauge.classList.remove('warn');
+      gauge.classList.add('na');
+    }
+    if (gaugeVal) gaugeVal.textContent = '--';
+    if (heroTitle) heroTitle.textContent = '等待数据';
+    if (heroSub) heroSub.textContent = 'host 连接后自动刷新';
+  }
+
+  // 运行信息：改为小卡片 chips，比一行挤在一起的长文本更易扫读
   const sub = document.getElementById('sys-sub');
   if (sub) {
-    const parts = [];
+    const chips = [];
+    const chip = (label, value) => `<span class="sys-chip"><span>${label}</span><b>${value}</b></span>`;
     if (typeof m.memUsed === 'number' && typeof m.memTotal === 'number') {
-      parts.push(`内存 ${m.memUsed.toFixed(1)}/${m.memTotal.toFixed(1)}GB`);
+      chips.push(chip('内存', `${m.memUsed.toFixed(1)} / ${m.memTotal.toFixed(0)} GB`));
     }
     if (typeof m.swapUsed === 'number' && typeof m.swapTotal === 'number') {
-      parts.push(`交换 ${m.swapUsed.toFixed(1)}/${m.swapTotal.toFixed(1)}GB`);
+      chips.push(chip('交换', `${m.swapUsed.toFixed(1)} / ${m.swapTotal.toFixed(0)} GB`));
     }
     if (typeof m.vramUsed === 'number' && typeof m.vramTotal === 'number' && m.vramTotal > 0) {
-      parts.push(`显存 ${m.vramUsed.toFixed(1)}/${m.vramTotal.toFixed(1)}GB`);
+      chips.push(chip('显存', `${m.vramUsed.toFixed(1)} / ${m.vramTotal.toFixed(0)} GB`));
     }
-    if (typeof m.diskRead === 'number') parts.push(`读 ${m.diskRead.toFixed(1)}MB/s`);
-    if (typeof m.diskWrite === 'number') parts.push(`写 ${m.diskWrite.toFixed(1)}MB/s`);
-    if (typeof m.uptime === 'number') parts.push(`开机 ${m.uptime.toFixed(0)}h`);
-    if (lastUpdated) {
-      parts.push(`更新 ${new Date(lastUpdated).toLocaleTimeString('zh-CN', { hour12: false })}`);
+    if (typeof m.diskRead === 'number' || typeof m.diskWrite === 'number') {
+      const r = typeof m.diskRead === 'number' ? m.diskRead.toFixed(1) : '--';
+      const w = typeof m.diskWrite === 'number' ? m.diskWrite.toFixed(1) : '--';
+      chips.push(chip('磁盘 I/O', `${r} / ${w} MB/s`));
     }
-    sub.textContent = parts.join(' · ');
+    if (typeof m.uptime === 'number') chips.push(chip('开机', `${m.uptime.toFixed(0)} h`));
+    sub.innerHTML = chips.length ? chips.join('') : '<span class="sys-empty">等待运行信息</span>';
+  }
+  const updated = document.getElementById('sys-update-label');
+  if (updated && lastUpdated) {
+    updated.textContent = new Date(lastUpdated).toLocaleTimeString('zh-CN', { hour12: false });
   }
 }
 

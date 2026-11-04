@@ -56,8 +56,12 @@ function applyBg() {
   document.body.dataset.bg = bg || 'default';
   if (bg && bg !== 'default') {
     document.body.style.backgroundColor = bg;
+    // body 的背景只覆盖内容高度；滚动到内容之外/overscroll 时露出的 html
+    // 画布也要同色，否则底部会出现一条纯黑/主题深色底。
+    document.documentElement.style.backgroundColor = bg;
   } else {
     document.body.style.backgroundColor = '';
+    document.documentElement.style.backgroundColor = '';
   }
 }
 

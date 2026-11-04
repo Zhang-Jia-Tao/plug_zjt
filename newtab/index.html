@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>新标签页</title>
+  <link rel="icon" type="image/png" href="icons/icon48.png" />
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/widgets.css" />
   <link rel="stylesheet" href="css/settings.css" />
@@ -39,35 +40,80 @@
     </div>
   </aside>
 
-  <!-- AI 应用管理器（右侧固定栏，Native Messaging host 驱动，常驻显示） -->
-  <aside id="ai-panel" class="ai-panel" aria-label="AI 管理器" aria-hidden="true">
+  <!-- AI 控制台（右侧固定栏，本机 Native Messaging + 网页 content script 合并监看） -->
+  <aside id="ai-panel" class="ai-panel" aria-label="AI 控制台" aria-hidden="true">
     <div class="ai-head">
-      <span class="ai-head-title">AI 管理器</span>
-      <span id="ai-status" class="ai-status">空闲</span>
+      <span class="ai-head-mark" aria-hidden="true">✦</span>
+      <div class="ai-head-copy">
+        <span class="ai-head-title">AI 控制台</span>
+        <span id="ai-live-sub" class="ai-head-sub">本机 + 网页 · 实时监看</span>
+      </div>
+      <span id="ai-status" class="ai-status" role="status" aria-live="polite">空闲</span>
       <button id="ai-refresh" class="ai-head-btn" title="刷新状态" aria-label="刷新 AI 状态">⟳</button>
       <button id="ai-close" class="ai-head-btn panel-close" title="关闭 AI 面板" aria-label="关闭 AI 面板">✕</button>
     </div>
     <div id="ai-banner" class="ai-banner hidden"></div>
-    <div class="ai-group-title">
-      <span>本机 AI</span>
-      <span id="ai-local-count" class="ai-group-count"></span>
+
+    <!-- 统一概览：不再分「本机 / 网页」两套列表 -->
+    <div id="ai-summary" class="ai-summary">
+      <div class="ai-summary-item">
+        <span id="ai-sum-tasking" class="ai-summary-num">0</span>
+        <span class="ai-summary-label">生成中</span>
+      </div>
+      <div class="ai-summary-item">
+        <span id="ai-sum-online" class="ai-summary-num">0</span>
+        <span class="ai-summary-label">在线</span>
+      </div>
+      <div class="ai-summary-item">
+        <span id="ai-sum-web" class="ai-summary-num">0</span>
+        <span class="ai-summary-label">网页 AI</span>
+      </div>
     </div>
-    <div id="ai-app-list" class="ai-app-list">
-      <!-- 由 JS 渲染：本地应用卡片（在线/任务中/离线） -->
+
+    <!-- 实时任务：先看正在做什么、跑了多久、是否在等确认，再往下才是应用列表/历史 -->
+    <div class="ai-live-head">
+      <span>实时任务</span>
+      <span id="ai-live-count" class="ai-section-count"></span>
     </div>
-    <div class="ai-group-title">
-      <span>网页 AI</span>
-      <span id="ai-web-count" class="ai-group-count"></span>
+    <div id="ai-live-tasks" class="ai-live-tasks" aria-live="polite">
+      <!-- 由 JS 渲染：本机 Claude Code / ChatGPT / DSH 的任务状态 -->
     </div>
-    <div id="ai-web-list" class="ai-app-list ai-web-list">
-      <div class="ai-empty">打开 ChatGPT / Claude / Gemini 等网页后自动出现</div>
+
+    <div class="ai-toolbar">
+      <div class="ai-filters" role="tablist" aria-label="筛选 AI 来源">
+        <button class="ai-filter active" data-ai-filter="all" role="tab" aria-selected="true">全部</button>
+        <button class="ai-filter" data-ai-filter="local" role="tab" aria-selected="false">本机</button>
+        <button class="ai-filter" data-ai-filter="web" role="tab" aria-selected="false">网页</button>
+      </div>
+      <span id="ai-updated" class="ai-updated">刚刚</span>
     </div>
+
+    <div id="ai-unified-list" class="ai-unified-list">
+      <!-- 由 JS 渲染：本机应用 + 网页 AI 的合并列表 -->
+    </div>
+    <button id="ai-offline-toggle" class="ai-offline-toggle hidden" type="button">显示离线应用</button>
+
     <div id="ai-dialog-list" class="ai-dialog-list">
       <!-- 由 JS 渲染：待处理弹窗（确认/否认按钮） -->
     </div>
-    <!-- 会话统计卡（替代完整历史消息流）：模型 / 累计 token / 轮次 / 最近请求 -->
-    <div id="ai-session" class="ai-session">
-      <!-- 由 JS 渲染：会话统计 -->
+    <div class="ai-section-head ai-history-head">
+      <span>最近完成</span>
+      <div class="ai-history-tools">
+        <span id="ai-session-count" class="ai-section-count"></span>
+        <label class="ai-history-sort-label">
+          <span class="sr-only">排序</span>
+          <select id="ai-history-sort" class="ai-history-sort" aria-label="最近完成排序">
+            <option value="time">最新</option>
+            <option value="duration">耗时</option>
+            <option value="tokens">Token</option>
+            <option value="project">项目</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <!-- 最近完成：紧凑行；点击展开 token / 工具详情 -->
+    <div id="ai-task-history" class="ai-task-history">
+      <!-- 由 JS 渲染：最近完成的任务，以及尚未产生任务记录的会话兜底 -->
     </div>
   </aside>
 

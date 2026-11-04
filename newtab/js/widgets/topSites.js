@@ -1,6 +1,7 @@
 // widgets/topSites.js — 常用网站小组件
 // chrome.topSites 读取浏览器「最常访问」+ 用户自定义网址（data.customSites）合并显示。
-// 图标：优先请求站点真实 favicon（origin/favicon.ico），失败回退品牌色首字母磁贴。
+// 图标：优先站点自身 favicon，其次 Chrome favicon2 缓存，最后品牌色首字母磁贴。
+// 站点图标探测在 favicon.js 内统一处理，书签栏/搜索框共用。
 // 添加表单弹层挂 document.body（widget 卡片 overflow:hidden 会裁剪卡内弹层）。
 // 私有配置：showLimit、newTab、customSites
 

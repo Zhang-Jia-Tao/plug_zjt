@@ -26,6 +26,7 @@
                                      ai_manager_host/host.mjs（Node.js）
                                        ├─ PowerShell：进程/CIM/UIA
                                        ├─ ~/.claude、~/.codex 日志 tail
+                                       ├─ ~/.dsh 会话文件活动检测
                                        └─ sysmon.ps1
 ```
 
@@ -100,7 +101,7 @@ aimanager.js
   │                                               ├─ connectNative('ai_manager_host')
   │                                               └─ 广播 host 事件给所有订阅 port
   ├─ sendMessage('ai:query'/'ai:sysmon'/'ai:respond')
-  └─ 收到 ai:event：apps/message/session/dialog/snapshot/sys/host:*
+  └─ 收到 ai:event：apps/message/session/tasks/dialog/snapshot/sys/host:*
 
 网页 AI：
 content-webai.js（仅 AI 域名）
@@ -110,10 +111,13 @@ content-webai.js（仅 AI 域名）
 ```
 
 - 页面只消费事件，不直接碰 Native Messaging。
-- 本机 AI 覆盖状态/会话/弹窗；网页 AI 只覆盖打开/空闲/生成中和标题，不读聊天正文、不提供 token/费用。
+- 本机 AI 覆盖状态/任务生命周期/会话/弹窗；网页 AI 只覆盖打开/空闲/生成中和标题，不读聊天正文、不提供 token/费用。
+- 任务状态由 host 的 `TaskTracker` 统一维护：开始、阶段、tool_use/tool_result、等待确认、完成/失败、token 增量；页面不根据消息自行推断任务。
+- Claude/Codex 按增量日志驱动；DSH 用 `zstd-frames.mjs` 逐帧解码 `session*.jsonl.zstd`，首次发现文件时回放一次历史以恢复最近任务。
+- 页面顶部渲染实时任务大卡（耗时、阶段、阻塞、token、确认按钮），下方最近完成支持展开和按时间/耗时/token/项目排序。
 - 网页 AI 不依赖 host，host 未安装时仍可工作。
 - host 断开：SW 广播 `host:error` 并 10s 后重连；页面侧指数退避重连 port。
-- 快照预算 512 KB，消息回放按新→旧装入；页面只用快照驱动会话状态机，不渲染历史。
+- 快照预算 512 KB，消息回放按新→旧装入；页面只用快照驱动任务和会话展示，不渲染聊天历史。
 - 本地 HTTP 探测并行执行，单个 1.2s 超时；8080/5000 等共用端口默认只在对应进程存在时探测。
 
 ### 3.4 系统指标
@@ -178,9 +182,10 @@ notionPush
 
 - `settings`：`theme`、`bgColor`、`stickyExtId`、`showSysPanel`、`showAiPanel`、`schemaVersion`。
 - `widgets`：`{id, key, size, data}` 数组；`data` 由各 widget 自定义。
-- `SCHEMA_VERSION = 9`；迁移只追加/改默认值，不重排用户布局。
+- `SCHEMA_VERSION = 10`；迁移只追加/改默认值，不重排用户布局。
   - v7 → v8：追加 `focusTimer`（番茄钟）。
   - v8 → v9：补回缺失的 `stickyTasks`（便利贴任务）。
+  - v9 → v10：追加 `javaNotes`（Java 终极笔记学习台，2×1）。
 - 目录句柄存 IndexedDB（`newtab_tree`），与 state 分开。
 
 ## 5. 安全模型
@@ -195,6 +200,7 @@ notionPush
 | 内容脚本 | `<all_urls>` 注入，但目录树默认隐藏；不需要可在扩展页关闭站点访问 |
 | 网页 AI 内容脚本 | 仅注入清单列出的 AI 域名；只上报 host/status/title/active，不读聊天正文、不 hook 网络 |
 | 本地 HTTP 探测 | 只连清单内 `127.0.0.1` 端口，不执行任意命令；共用端口需进程存在才探测 |
+| 项目监管 | 固定项目路径/脚本，命令白名单；端口被外部占用拒绝启动；停止前按命令行确认进程归属 |
 
 ### 5.1 已知边界/取舍
 
@@ -217,13 +223,16 @@ notionPush
 | 快照过大 | 512 KB 预算裁剪消息回放，避免超过 1 MB 被杀连接 |
 | 网页 AI 站点改版 | Stop 选择器/aria-busy 失配时退回 online，不误报生成中；心跳 8s 自愈 |
 | 本地 AI 端口被占用 | 8080/5000 等共用端口只在对应进程存在时探测，避免误判 |
+| Java 笔记端口被占用 | 4321/4400 有外部监听时拒绝启动，不自动杀进程；UI 显示 `port_conflict` |
+| 批注服务离线 | 仍可读站点；学习数据回退到 `server-data` 快照，UI 标注「本地快照」 |
 
 ## 7. 测试与回归
 
 - `tests/folder-sync.test.mjs`：清理范围（未知目录/非 `.md`/非 UUID 不删）。
 - `tests/notion-properties.test.mjs`：schema 过滤、类型不符跳过、旧调用兼容。
 - `tests/manifest.test.mjs`：跨扩展白名单与宿主 allowed_origins 一致、无通配。
-- `tests/focus-timer.test.mjs`：番茄钟/便利贴任务注册、默认状态与 v7→v9 迁移。
+- `tests/focus-timer.test.mjs`：番茄钟/便利贴任务注册、默认状态与 v7→v10 迁移。
+- `tests/java-notes-widget.test.mjs`：学习数据归一化、状态分类、host/扩展接线。
 - `tests/sticky-bridge.test.mjs`：便利贴跨扩展消息的错误映射。
 - `tests/webai.test.mjs`：网页 AI 注册表、域名匹配、content script 注入覆盖。
 - `tests/ai-probe.test.mjs`：本地 AI 模型名提取与 detail 格式化。
@@ -244,3 +253,5 @@ notionPush
 - **新增便利贴分类**：`extension/lib/categories.js`；文件目录/筛选/Notion select 自动跟随。
 - **新增宿主事件**：`host.mjs` `post({type})` → `newtab/background.js` 透传 → `aimanager.js`/`sysmonitor.js` 处理；
   大消息注意 1 MB 上限与快照预算。
+- **新增项目监管**：优先把探测/启停/日志/数据读取放进独立 supervisor，host 只做协议分发；
+  页面命令必须走固定白名单，禁止把任意路径/命令透传给 shell。

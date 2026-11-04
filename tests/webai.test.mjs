@@ -63,11 +63,33 @@ test('网页 AI 采集脚本只上报状态，不读取聊天正文', () => {
   assert.ok(!/textContent|innerText/.test(payload[0]));
 });
 
-test('网页 AI 采集避免监听全页 characterData，并为兜底扫描/僵尸状态加限制', () => {
+test('网页 AI 只观察活动节点，不读取正文，并为兜底扫描/僵尸状态加限制', () => {
   const src = fs.readFileSync(path.join(root, 'newtab/content-webai.js'), 'utf8');
-  assert.ok(!src.includes('characterData: true'));
+  assert.ok(src.includes('characterData: true'), '需要观察流式文本变化才能判断活动');
+  assert.ok(!src.includes('nodeValue'), '不能读取文本节点内容');
   assert.ok(src.includes('lastFallbackScan'));
   assert.match(src, /now - lastFallbackScan < 1500/);
   const bg = fs.readFileSync(path.join(root, 'newtab/background.js'), 'utf8');
   assert.match(bg, /WEB_AI_TTL_MS/);
+});
+
+test('网页 AI 用 3.5s 心跳 + 标签激活 ping 加速会话状态刷新', () => {
+  const src = fs.readFileSync(path.join(root, 'newtab/content-webai.js'), 'utf8');
+  const bg = fs.readFileSync(path.join(root, 'newtab/background.js'), 'utf8');
+  assert.match(src, /setInterval\(\(\) => send\(true\), 3500\)/);
+  assert.ok(src.includes("'ai:web-ping'"), 'content 未监听主动 ping');
+  assert.ok(src.includes('activityTs'), 'content 未上报最近活动时间');
+  assert.ok(bg.includes("action: 'ai:web-ping'"), 'background 未发送主动 ping');
+  assert.match(bg, /WEB_AI_TTL_MS = 45_000/);
+  assert.match(bg, /function pingWebAiTab/);
+});
+
+test('网页 tasking 需要 Stop 出现后的真实活动，并有后台超时兜底', () => {
+  const src = fs.readFileSync(path.join(root, 'newtab/content-webai.js'), 'utf8');
+  const bg = fs.readFileSync(path.join(root, 'newtab/background.js'), 'utf8');
+  assert.match(src, /lastActivityAt > taskSignalAt/);
+  assert.match(src, /now - lastActivityAt < 4000/);
+  assert.match(src, /const tasking = !!\(signal && freshActivity\)/);
+  assert.match(bg, /WEB_AI_TASK_IDLE_MS = 10_000/);
+  assert.match(bg, /now - Number\(t\.activityTs\) < WEB_AI_TASK_IDLE_MS/);
 });

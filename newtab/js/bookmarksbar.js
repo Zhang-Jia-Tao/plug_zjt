@@ -1,7 +1,7 @@
 // bookmarksbar.js — 顶部书签栏（仿谷歌首页「收藏的网址」一行）
 // chrome.bookmarks 读取书签栏（根 id '1'）：网址点击当前标签跳转（同谷歌快捷方式），
 // 文件夹点击弹出面板逐层浏览（面板挂 body，fixed 定位不受裁剪）。
-// 图标：优先请求站点真实 favicon（/favicon.ico），失败回退品牌色首字母磁贴
+// 图标：优先站点自身 favicon，其次 Chrome favicon2 缓存，失败回退品牌色首字母磁贴
 // （MV3 扩展页禁 inline 事件，onerror 必须用 addEventListener 挂）。
 // 书签过多时末尾出现「»」下拉按钮，点开可见被挤出的其余书签。
 // 书签增删改移时由 chrome.bookmarks 事件驱动自动刷新。
@@ -52,8 +52,8 @@ function hostOf(url) {
 const FOLDER_SVG = `<svg class="bm-folder-svg" viewBox="0 0 20 16" aria-hidden="true"><path fill="currentColor" d="M1.6 3.2c0-.9.7-1.6 1.6-1.6h4.3c.4 0 .8.2 1.1.5l1.2 1.4h7.1c.9 0 1.6.7 1.6 1.6v8.5c0 .9-.7 1.6-1.6 1.6H3.2c-.9 0-1.6-.7-1.6-1.6V3.2z"/></svg>`;
 
 // 图标磁贴：底层字母磁贴 + 上层真实 favicon（加载成功后覆盖字母）。
-// favicon 走 chrome://favicon2（Chrome 自带缓存，零网络请求）；无缓存的站点
-// 回退字母磁贴。chrome:// 等内部地址不生成 img。
+// 公共 favicon.js 会先显示 Chrome favicon2 缓存，再探测站点 origin/favicon.ico，
+// 站点自带图标成功则替换；两者都失败才回退字母磁贴。chrome:// 等内部地址不生成 img。
 function iconHtml(url) {
   const host = hostOf(url);
   return `
@@ -64,7 +64,7 @@ function iconHtml(url) {
   `;
 }
 
-// 给 scope 内所有 favicon 挂载成功/失败处理（成功 → 盖住字母；失败 → 移除 img）。
+// 给 scope 内所有 favicon 挂载成功/失败处理（成功 → 盖住字母；失败 → 隐藏 img）。
 function wireFavicons(scope) {
   // 先清理历史遗留的旧结构 class（bm-favicon），再统一走公共逻辑
   for (const old of scope.querySelectorAll('.bm-favicon')) old.classList.add('fav-img');

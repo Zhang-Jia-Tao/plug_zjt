@@ -1,13 +1,13 @@
 # 可定制新标签页（newtab）
 
-Manifest V3 新标签页扩展：把新标签页做成可编排的工作台，包含小组件网格、书签栏、本地目录树、AI 应用管理器和系统资源监视。
+Manifest V3 新标签页扩展：把新标签页做成可编排的工作台，包含小组件网格、书签栏、本地目录树、AI 控制台和系统资源监视。
 
 ## 加载
 
 1. `chrome://extensions` → 开启「开发者模式」。
 2. 「加载已解压的扩展程序」→ 选择本目录 `newtab/`。
 3. 打开新标签页即可看到工作台。
-4. AI 管理器/系统监视需要先安装本地宿主：
+4. AI 控制台/系统监视需要先安装本地宿主：
 
 ```bat
 cd ..\ai_manager_host
@@ -68,6 +68,16 @@ export default {
 | `stickyTasks` | 便利贴扩展任务清单联动 |
 | `focusTimer` | 番茄钟/专注倒计时，刷新页面可续计时 |
 | `music` | 本地音乐播放器（File System Access 直读） |
+| `javaNotes` | Java 终极笔记学习台：一键启动、学习数据、服务管理（2×1） |
+
+### Java 终极笔记 · 学习台
+
+- 2×1 卡片；主按钮随状态变化：`启动并学习` / `补启批注` / `打开学习`。
+- 固定展示今日复习、累计学习时长、批注数；批注服务离线时读取 `server-data` 本地快照并标注「本地快照」。
+- 快捷入口：今日复习 `/review`、Hot200 `/hot200`、项目 `/project`、源码图谱 `/project/source/graph`；站点未启动时会先拉起再打开。
+- `⋯` 管理弹层：站点/批注 PID、重启、停止、构建预览、导出备份、刷新日志。
+- 实际启停由 host 的 `project-supervisor.mjs` 执行；页面只通过 `project:command` 触发，不能传任意路径。
+- 默认项目路径可用 host 环境变量 `JAVA_NOTES_ROOT` 覆盖。
 
 ### 便利贴任务
 
@@ -87,13 +97,13 @@ export default {
 `js/store.js`：
 
 - 单键 `newtab_state = { settings, widgets }`，整体读写。
-- `settings.schemaVersion` 记录结构版本；当前 `SCHEMA_VERSION = 9`。
+- `settings.schemaVersion` 记录结构版本；当前 `SCHEMA_VERSION = 10`。
 - `migrateState()` 按版本递增补默认组件/改默认值，不改变用户已有布局顺序。
-- v7 → v8 追加 `focusTimer`；v8 → v9 补回缺失的 `stickyTasks`；已有组件不重复迁移。
+- v7 → v8 追加 `focusTimer`；v8 → v9 补回缺失的 `stickyTasks`；v9 → v10 追加 `javaNotes`；已有组件不重复迁移。
 - `settings.stickyExtId` 保存便利贴扩展 ID，供任务/提醒联动。
 - `settings.showSysPanel` / `settings.showAiPanel` 保存宽屏停靠偏好；窄屏抽屉是临时态，不写入这两个字段。
 
-## AI 应用管理器
+## AI 控制台（本机 + 网页）
 
 数据链路：
 
@@ -111,12 +121,15 @@ content-webai.js ── ai:web-state ──► background.js（按 tab 聚合）
   aimanager.js  ◄── ai:event(type: webai) ── background.js
 ```
 
-- 本机事件：`apps`（应用状态）、`message`（实时消息，驱动会话状态徽标）、`session`（会话统计）、`dialog` / `dialog:closed`、`snapshot`、`sys`、`host:ready`、`host:error`。
-- 网页事件：`webai`（每个站点的打开/空闲/生成中状态、活动标签页）。
-- 本机应用覆盖 Claude Code、ChatGPT 桌面版、Ollama、LM Studio、llama.cpp、vLLM、LocalAI、KoboldCpp、GPT4All、Jan、AnythingLLM、text-generation-webui、Cherry Studio、Chatbox、Claude 桌面版、Cursor。
+- 本机事件：`apps`（应用状态）、`message`（实时消息，用于最近活动时间）、`session`（会话统计）、`tasks`（实时任务生命周期）、`dialog` / `dialog:closed`、`snapshot`、`sys`、`host:ready`、`host:error`。
+- 网页事件：`webai`（每个站点的打开/空闲/生成中状态、活动标签页、最近活动时间）。
+- 本机应用覆盖 Claude Code、ChatGPT 桌面版、DeepSeek Harness、Ollama、LM Studio、llama.cpp、vLLM、LocalAI、KoboldCpp、GPT4All、Jan、AnythingLLM、text-generation-webui、Cherry Studio、Chatbox、Claude 桌面版、Cursor。DeepSeek Harness 由 host 逐帧解码压缩会话文件，读取 turn/tool/usage 事件；网页端不展示 DSH 聊天正文。
 - 网页 AI 当前覆盖 ChatGPT、Claude、Gemini、DeepSeek、Kimi、Perplexity、Grok、Copilot，只读页面状态和标题，不读取聊天正文，也不承诺 token/费用统计。
-- UI 只展示本机会话统计卡（项目/模型/输入/输出/轮次/最近请求），不渲染完整对话历史；网页卡片点击可切到对应标签页。
-- 会话短 ID 可点击复制完整 ID；相对时间每 30s 自动刷新。
+- UI 选「本机 + 网页」统一列表：不再分两栏，按生成中 → 在线/已完成 → 离线排序；顶部概览显示生成中/在线/网页 AI 数量，支持全部/本机/网页筛选与离线应用展开。
+- 顶部「实时任务」大卡显示应用/项目、当前阶段、已耗时、正在执行的工具、阻塞告警、本轮和累计 token、上下文占用、最近活动；等待确认时可在大卡里直接点确认/拒绝。
+- 下方「最近完成」按时间/耗时/token/项目排序，紧凑行可展开项目、模型、完成结果、轮次、token、会话 ID；完成的耗时不随刷新变化。Claude 没有 result 事件时不会假装完成，只有 90s 无输出告警和 5min 静默结束。任务耗时/阶段时钟每秒更新，会话相对时间每 5s 刷新。
+- 避免幽灵「生成中」：本机 host 首次看到 Claude/Codex 会话文件时从文件末尾开始，只处理启动后新增的 assistant/user 日志（thinking、tool_use 也算）；启动时若文件尾部 30s 内有活动，会直接补上 tasking，历史日志不回放。45s 无新日志自动回到在线。DSH 例外：启动时完整回放一次压缩会话文件以恢复最近任务，之后增量解码；当前 turn 的 tool_running/waiting_user 不会被 45s 看门狗误清。
+- 网页端必须同时满足：Stop / aria-busy 已出现，且主内容区在出现后最近 4s 有真实节点或文本变化；后台再有 10s 无活动超时兜底。常驻 Stop 按钮但页面空闲时会显示在线。
 - 弹窗确认/否认：`ai:respond` → SW → host 遥控点击白名单进程的按钮；host 不会自动点。新增本地应用默认只做状态监控，不在弹窗白名单里。
 - 连接断开指数退避重连（1s → 15s）。
 
@@ -141,7 +154,7 @@ content-webai.js ── ai:web-state ──► background.js（按 tab 聚合）
 
 - 选择本地目录后扫描音频（flac/mp3/m4a/ogg/wav/aac/opus）。
 - 音频大文件由页面直接从 IDB 句柄读取，不走 SW，避免消息体过大。
-- 支持播放/暂停、上一首/下一首、音量、循环。
+- 支持播放/暂停、上一首/下一首、音量、随机播放、列表/单曲循环。
 
 ## 权限说明
 
@@ -149,12 +162,12 @@ content-webai.js ── ai:web-state ──► background.js（按 tab 聚合）
 |------|------|
 | `storage` | 保存 `newtab_state` |
 | `topSites` / `bookmarks` | 常用网站 / 书签栏 |
-| `nativeMessaging` | AI 管理器宿主 |
+| `nativeMessaging` | AI 控制台宿主 |
 | `tabs` / `scripting` | 书签跳转、目录树侧栏注入 |
 | `offscreen` | 剪贴板代持 |
 | `clipboardRead/Write` | 目录树复制粘贴 |
 | `downloads` | 下载文件 |
-| `favicon` | 常用网站图标 |
+| `favicon` | 常用网站图标（站点自身 favicon 优先，Chrome 缓存兜底） |
 | `file://*/*` | 本地目录树（file 权限） |
 | `<all_urls>`（optional） | 目录树在任意网页启用 |
 
@@ -194,6 +207,7 @@ newtab/
 │   ├── bridge.js / favicon.js / offscreen.js
 │   └── widgets/             # 各组件 + registry.js
 ├── img/                     # 品牌图/应用图标
+├── icons/                   # 扩展图标：icon.svg 源 + 16/48/128 PNG
 └── tools/                   # 品牌图生成工具（非运行时）
 ```
 
@@ -217,8 +231,14 @@ node tests/sticky-bridge.test.mjs
 # 网页 AI 注册表/注入覆盖回归
 node tests/webai.test.mjs
 
+# 常用网站图标取图优先级回归
+node tests/favicon.test.mjs
+
 # 本地 AI 模型探测回归
 node tests/ai-probe.test.mjs
+
+# 任务生命周期/阻塞/ token 增量/完成冻结、DSH zstd 帧扫描
+node tests/task-tracker.test.mjs
 ```
 
 ## 常见问题
@@ -226,8 +246,9 @@ node tests/ai-probe.test.mjs
 | 现象 | 排查 |
 |------|------|
 | AI 面板显示「主机未连接」 | 是否执行 `install-host.bat <新标签页ID>`；`chrome://extensions` 里的 ID 是否与宿主 `allowed_origins` 一致 |
-| 网页 AI 分组为空 | 是否打开了受支持的 AI 站点；重新加载扩展后刷新该站点；`content-webai.js` 是否被站点匹配 |
-| 网页 AI 一直显示空闲 | 站点 Stop 按钮/aria-busy 选择器可能改版；卡片仍可点击聚焦，状态会 8s 心跳自愈 |
+| 网页 AI 列表为空 | 是否打开了受支持的 AI 站点；重新加载扩展后刷新该站点；`content-webai.js` 是否被站点匹配 |
+| 网页 AI 一直显示空闲 | 站点 Stop 按钮/aria-busy 选择器可能改版；卡片仍可点击聚焦，状态会 3.5s 心跳 + 标签激活 ping 自愈 |
+| 明明没使用 AI 却显示「生成中」 | 新版默认不会再回放历史日志/常驻 Stop 按钮；先重新加载扩展并重启 host（关闭 Chrome 再开或重载扩展）。本机 45s、网页 10s 无活动会自动回到在线。 |
 | 网页 AI 为什么没有 token | 网页端没有稳定 usage 接口；本版本只做活动状态，不 hook 网络响应 |
 | 系统指标大量 `--` | WMI 权限/沙箱限制；在普通桌面 Chrome 中运行宿主，而不是受限终端 |
 | 目录树不可用 | 是否授予文件访问权限；浏览器重启后部分目录需重新授权 |

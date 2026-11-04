@@ -4,7 +4,7 @@
 // 音频数据全程不经过 SW（MV3 SW 内存受限，100MB flac 经消息/port 传输会失败），
 // 只有目录列表扫描这种小数据走 SW 消息。
 // 首次使用点「选择音乐目录」在面板内直接调起系统选择器（直写 IDB）。
-// 私有配置：dirId（音乐目录句柄 ID）、volume、loop
+// 私有配置：dirId（音乐目录句柄 ID）、volume、loopMode（off/all/one）、shuffle（随机）
 
 import { saveDirHandle, getDirHandle } from '../handle-store.js';
 
@@ -14,15 +14,25 @@ export default {
   key: 'music',
   label: '本地音乐',
   description: '播放本地音乐目录中的歌曲（FLAC/MP3/M4A 等）',
-  defaultData: { dirId: '', volume: 0.8, loop: false },
+  defaultData: { dirId: '', volume: 0.8, loopMode: 'off', shuffle: false },
   config: [
-    { key: 'loop', label: '单曲循环', type: 'bool', default: false },
+    { key: 'loopMode', label: '循环模式', type: 'select', default: 'off', options: [
+      { value: 'off', label: '不循环' },
+      { value: 'all', label: '列表循环' },
+      { value: 'one', label: '单曲循环' },
+    ] },
+    { key: 'shuffle', label: '随机播放', type: 'bool', default: false },
   ],
 
   init(container, data, api) {
     const el = document.createElement('div');
     el.className = 'music-widget';
     container.appendChild(el);
+
+    // 兼容旧数据：旧版只有 loop 布尔值（单曲循环）；新版合并为三态 loopMode。
+    if (!['off', 'all', 'one'].includes(data.loopMode)) {
+      data.loopMode = data.loop ? 'one' : 'off';
+    }
 
     const state = {
       songs: [],        // [{ name, size }]
@@ -133,8 +143,14 @@ export default {
                 <div class="music-title-marquee"><div class="music-title"></div></div>
                 <div class="music-sub"></div>
               </div>
-              <div class="music-mode">
-                <button class="music-btn" data-act="loop" title="单曲循环">🔁</button>
+              <div class="music-mode" role="group" aria-label="播放模式">
+                <button class="music-btn music-mode-btn" data-act="shuffle" title="随机播放" aria-label="随机播放" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg>
+                </button>
+                <button class="music-btn music-mode-btn" data-act="loop" title="循环关闭" aria-label="循环模式" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                  <span class="music-mode-badge" aria-hidden="true"></span>
+                </button>
               </div>
             </div>
             <div class="music-controls">
@@ -176,7 +192,8 @@ export default {
       audio = el.querySelector('audio');
       audio.preload = 'auto';
       audio.volume = data.volume ?? 0.8;
-      audio.loop = !!data.loop;
+      // 循环/随机由 ended 处理器统一决定；不要用 audio.loop，否则单曲会盖住列表逻辑。
+      audio.loop = false;
       audio.addEventListener('timeupdate', onTimeUpdate);
       audio.addEventListener('ended', onEnded);
       audio.addEventListener('loadedmetadata', () => {
@@ -199,15 +216,29 @@ export default {
         const btn = e.target.closest('.music-btn');
         if (!btn) return;
         const act = btn.dataset.act;
-        if (act === 'prev') playIndex(state.current - 1);
-        else if (act === 'next') playIndex(state.current + 1);
+        if (act === 'prev') playIndex(nextIndex(-1));
+        else if (act === 'next') playIndex(nextIndex(1));
         else if (act === 'play') togglePlay();
-        else if (act === 'loop') {
-          data.loop = !data.loop;
-          audio.loop = data.loop;
-          if (api?.patchWidget) api.patchWidget({ loop: data.loop });
-          syncLoopBtn();
+      });
+
+      // 模式按钮在 .music-info 内，不在 .music-controls 里，必须单独委托。
+      el.querySelector('.music-mode').addEventListener('click', (e) => {
+        const btn = e.target.closest('.music-btn');
+        if (!btn) return;
+        const act = btn.dataset.act;
+        if (act === 'loop') {
+          // 单键三态：关闭 → 列表循环 → 单曲循环 → 关闭
+          const order = ['off', 'all', 'one'];
+          const cur = order.includes(data.loopMode) ? data.loopMode : 'off';
+          data.loopMode = order[(order.indexOf(cur) + 1) % order.length];
+          if (api?.patchWidget) api.patchWidget({ loopMode: data.loopMode });
+        } else if (act === 'shuffle') {
+          data.shuffle = !data.shuffle;
+          if (api?.patchWidget) api.patchWidget({ shuffle: !!data.shuffle });
+        } else {
+          return;
         }
+        syncModeBtns();
       });
 
       el.querySelector('.music-progress-bar').addEventListener('click', (e) => {
@@ -224,7 +255,7 @@ export default {
       });
 
       renderPlaylist();
-      syncLoopBtn();
+      syncModeBtns();
       updatePlayBtn();
       syncPlaylistCount();
       // 加载第一首（不自动播放，等用户点 ▶）
@@ -267,9 +298,39 @@ export default {
       `).join('');
     }
 
-    function syncLoopBtn() {
-      const btn = el.querySelector('[data-act="loop"]');
-      if (btn) btn.classList.toggle('active', !!data.loop);
+    function syncModeBtns() {
+      const shuffleBtn = el.querySelector('[data-act="shuffle"]');
+      if (shuffleBtn) {
+        shuffleBtn.classList.toggle('active', !!data.shuffle);
+        shuffleBtn.setAttribute('aria-pressed', String(!!data.shuffle));
+      }
+      const loopBtn = el.querySelector('[data-act="loop"]');
+      if (loopBtn) {
+        const mode = data.loopMode || 'off';
+        const label = mode === 'one' ? '单曲循环' : mode === 'all' ? '列表循环' : '循环关闭';
+        loopBtn.classList.toggle('active', mode !== 'off');
+        loopBtn.dataset.mode = mode;
+        loopBtn.title = label;
+        loopBtn.setAttribute('aria-label', label);
+        loopBtn.setAttribute('aria-pressed', String(mode !== 'off'));
+        const badge = loopBtn.querySelector('.music-mode-badge');
+        if (badge) badge.textContent = mode === 'one' ? '1' : '';
+      }
+    }
+
+    // 下一首/上一首：随机模式优先随机；手动切歌时始终可循环。
+    // auto=true（自然播放结束）时，未开循环且已到末尾则返回 -1 停止。
+    function nextIndex(delta, { auto = false } = {}) {
+      const n = state.songs.length;
+      if (n === 0) return -1;
+      if (data.shuffle && n > 1) {
+        let idx = state.current;
+        while (idx === state.current) idx = Math.floor(Math.random() * n);
+        return idx;
+      }
+      const raw = state.current + delta;
+      if (auto && data.loopMode === 'off' && (raw >= n || raw < 0)) return -1;
+      return (raw + n) % n;
     }
 
     function updatePlayBtn() {
@@ -280,9 +341,8 @@ export default {
     // ---- 播放控制 ----
     async function playIndex(index, { autoplay = true } = {}) {
       if (state.songs.length === 0) return;
-      // 循环边界
-      if (index < 0) index = state.songs.length - 1;
-      if (index >= state.songs.length) index = 0;
+      // 边界由 nextIndex() 统一处理；-1 表示“未开循环且已到末尾，停止”。
+      if (index < 0 || index >= state.songs.length) return;
       state.current = index;
       const song = state.songs[index];
       // UI 先更新（读盘期间即显示曲目名）
@@ -345,8 +405,20 @@ export default {
     }
 
     function onEnded() {
-      // 单曲循环由 audio.loop 处理；否则下一首
-      if (!data.loop) playIndex(state.current + 1);
+      // 单曲循环直接重播当前曲目（File 重新读取，避免 audio.loop 绕过播放模式）
+      if (data.loopMode === 'one') {
+        playIndex(state.current);
+        return;
+      }
+      // 自然结束：按当前模式找下一首；未开循环且已是最后一首则停下。
+      const next = nextIndex(1, { auto: true });
+      if (next >= 0) {
+        playIndex(next);
+      } else {
+        updatePlayBtn();
+        el.querySelector('.music-disc')?.classList.remove('playing');
+        el.querySelector('.music-cat')?.classList.remove('walking');
+      }
     }
 
     // ---- 工具 ----

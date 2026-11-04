@@ -18,18 +18,23 @@ const aiSubscribers = new Set(); // 页面 port（onDisconnect 自动摘除）
 chrome.runtime.onConnect.addListener((pagePort) => {
   if (pagePort.name !== 'ai:subscribe') return;
   aiSubscribers.add(pagePort);
+  pagePort.onMessage.addListener((msg) => forwardProjectCommand(pagePort, msg));
   pagePort.onDisconnect.addListener(() => {
     aiSubscribers.delete(pagePort);
     // 全部页面断开：sysmon 降频（host 侧 15s 低频轮询省 CPU）
     if (aiSubscribers.size === 0) {
       const p = aiPort;
-      if (p) p.postMessage({ type: 'sysmon', fast: false });
+      if (p) {
+        try { p.postMessage({ type: 'sysmon', fast: false }); } catch {}
+        try { p.postMessage({ type: 'project:watch', watch: false }); } catch {}
+      }
     }
   });
   // 新订阅者：确保 host 连接活着，并立即请求一份快照
   const port = ensureAiPort();
   if (port) {
     try { port.postMessage({ type: 'query' }); } catch { /* host 刚断开，等重连 */ }
+    try { port.postMessage({ type: 'project:watch', watch: true }); } catch {}
   } else {
     pagePort.postMessage({ action: 'ai:event', payload: { type: 'host:error', message: 'host 未连接（是否已运行 install-host.bat？）' } });
   }
@@ -52,6 +57,12 @@ function ensureAiPort() {
     // 10s 后自动重连（host 可能刚被安装）
     setTimeout(ensureAiPort, 10000);
   });
+  // host 重连时没有新的页面订阅事件，主动补一次 query/watch，避免面板与
+  // 学习台停在旧快照上。
+  if (aiSubscribers.size > 0) {
+    try { aiPort.postMessage({ type: 'query' }); } catch {}
+    try { aiPort.postMessage({ type: 'project:watch', watch: true }); } catch {}
+  }
   return aiPort;
 }
 
@@ -61,10 +72,51 @@ function broadcastAi(msg) {
   }
 }
 
+// 页面 → host 的项目命令转发。页面只提交命令名和少量布尔/数字参数，
+// 真正的项目路径、启动脚本、进程白名单都在 host 侧硬编码，扩展不能传任意命令。
+function forwardProjectCommand(pagePort, msg) {
+  if (!msg || msg.action !== 'project:command') return;
+  const requestId = msg.requestId;
+  const port = ensureAiPort();
+  if (!port) {
+    pagePort.postMessage({
+      action: 'ai:event',
+      payload: {
+        type: 'project:result',
+        requestId,
+        ok: false,
+        error: { code: 'host_offline', message: 'host 未连接（是否已运行 install-host.bat？）' },
+      },
+    });
+    return;
+  }
+  try {
+    port.postMessage({
+      type: 'project:command',
+      requestId,
+      command: String(msg.command || ''),
+      payload: msg.payload && typeof msg.payload === 'object' ? msg.payload : {},
+    });
+  } catch (e) {
+    pagePort.postMessage({
+      action: 'ai:event',
+      payload: {
+        type: 'project:result',
+        requestId,
+        ok: false,
+        error: { code: 'host_send_failed', message: String(e && e.message || e) },
+      },
+    });
+  }
+}
+
 // ---- 网页 AI：content script 上报 → SW 按 tab 聚合 ----
 // 网页状态不经过 Native Messaging；host 未安装时也能工作。
-const webAiTabs = new Map(); // tabId → {app,status,title,active,url,lastTs}
-const WEB_AI_TTL_MS = 60_000;
+const webAiTabs = new Map(); // tabId → {app,status,title,active,url,lastTs,activityTs}
+const WEB_AI_TTL_MS = 45_000;
+// content 已经要求“Stop/aria-busy 出现后仍有真实活动”；这里再做一层超时兜底，
+// 防止旧版 content script 或丢失心跳把 tasking 永久挂住。
+const WEB_AI_TASK_IDLE_MS = 10_000;
 let lastWebAiJson = '';
 
 // 标签冻结/内容脚本失效/页面崩溃后不会再上报，靠 TTL 把僵尸卡片清掉。
@@ -99,8 +151,11 @@ function buildWebApps() {
 
   const apps = [];
   for (const { site, tabs } of groups.values()) {
+    const now = Date.now();
     const active = tabs.find(t => t.active);
-    const tasking = tabs.find(t => t.status === 'tasking');
+    const tasking = tabs.find(t => t.status === 'tasking'
+      && Number(t.activityTs) > 0
+      && now - Number(t.activityTs) < WEB_AI_TASK_IDLE_MS);
     // 同一站点多标签：优先聚焦正在生成的标签，其次当前活动标签
     const focus = tasking || active
       || tabs.slice().sort((a, b) => b.lastTs - a.lastTs)[0];
@@ -109,6 +164,7 @@ function buildWebApps() {
     const detail = tabs.length > 1
       ? `${tabs.length} 个标签页${activeTitle ? ' · ' + activeTitle : ''}`
       : (focus.title || site.detail || title);
+    const lastTs = Math.max(...tabs.map(t => t.lastTs || 0));
     apps.push({
       id: site.id,
       name: site.name,
@@ -120,7 +176,9 @@ function buildWebApps() {
       color: site.color,
       short: site.short,
       url: focus.url,
-      lastTs: Math.max(...tabs.map(t => t.lastTs || 0)),
+      lastTs,
+      // 只在主内容区真的有新增节点时更新；心跳不冒充“会话活动”。
+      lastActivity: Math.max(0, ...tabs.map(t => t.activityTs || 0)),
     });
   }
 
@@ -130,7 +188,7 @@ function buildWebApps() {
     || b.lastTs - a.lastTs);
 }
 
-// lastTs 每次心跳都会变，但不影响卡片内容；签名不包含它，避免 8s 重画一次
+// lastTs 每次心跳都会变，但不影响卡片内容；签名不包含它，避免 3.5s 心跳重画一次
 function webAiSignature(apps) {
   return JSON.stringify(apps.map(a => ({
     id: a.id,
@@ -139,6 +197,8 @@ function webAiSignature(apps) {
     tabId: a.tabId,
     title: a.title,
     detail: a.detail,
+    // 最近活动按 2s 分桶：活跃会话可更快刷新 UI，但不会每次心跳都重画。
+    activity: Math.floor((a.lastActivity || 0) / 2000),
   })));
 }
 
@@ -185,6 +245,7 @@ function handleWebAiState(msg, sender, sendResponse) {
     active: typeof tab.active === 'boolean' ? tab.active : !!p.active,
     url: String(p.url || tab.url || '').slice(0, 300),
     lastTs: Date.now(),
+    activityTs: Number(p.activityTs) > 0 ? Number(p.activityTs) : 0,
   });
   broadcastWebAi();
   sendResponse({ ok: true });
@@ -212,6 +273,15 @@ function pruneWebAiTab(tabId) {
   if (webAiTabs.delete(tabId)) broadcastWebAi(true);
 }
 
+// 标签切换/页面重新可见时，主动向 content script 要一次当前状态，
+// 比等下一次 3.5s 心跳更快；失败说明脚本未注入，静默等心跳。
+function pingWebAiTab(tabId) {
+  if (!webAiTabs.has(tabId)) return;
+  chrome.tabs.sendMessage(tabId, { action: 'ai:web-ping' }, () => {
+    void chrome.runtime.lastError;
+  });
+}
+
 chrome.tabs.onRemoved.addListener((tabId) => pruneWebAiTab(tabId));
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   let changed = false;
@@ -219,6 +289,7 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
     const active = id === tabId;
     if (st.active !== active) { st.active = active; changed = true; }
   }
+  pingWebAiTab(tabId);
   if (changed) broadcastWebAi(true);
 });
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
@@ -231,6 +302,9 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (!site) { pruneWebAiTab(tabId); return; }
   const prev = webAiTabs.get(tabId);
   if (prev && prev.app !== site.id) pruneWebAiTab(tabId);
+  if (info.status === 'complete') {
+    setTimeout(() => pingWebAiTab(tabId), 250);
+  }
 });
 
 function handleAiMessage(msg, sender, sendResponse) {
@@ -245,6 +319,7 @@ function handleAiMessage(msg, sender, sendResponse) {
     }
     case 'ai:query': {
       const port = ensureAiPort();
+      for (const tabId of webAiTabs.keys()) pingWebAiTab(tabId);
       broadcastWebAi(true); // 手动刷新也同步刷新网页 AI
       if (!port) { sendResponse({ ok: false, message: 'host 未连接' }); break; }
       port.postMessage({ type: 'query' });

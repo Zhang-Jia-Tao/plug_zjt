@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="12" y1="8" x2="118" y2="122" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#25185F"/>
+      <stop offset="0.52" stop-color="#5B3DF5"/>
+      <stop offset="1" stop-color="#9268FF"/>
+    </linearGradient>
+    <linearGradient id="fur" x1="48" y1="38" x2="84" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD08A"/>
+      <stop offset="0.55" stop-color="#F6A85C"/>
+      <stop offset="1" stop-color="#EC8B45"/>
+    </linearGradient>
+    <radialGradient id="haze" cx="0" cy="0" r="1" gradientTransform="translate(24 18) rotate(46) scale(100)">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.7" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="squircle">
+      <rect x="4" y="4" width="120" height="120" rx="31"/>
+    </clipPath>
+  </defs>
+
+  <rect x="4" y="4" width="120" height="120" rx="31" fill="url(#bg)"/>
+  <g clip-path="url(#squircle)">
+    <rect x="4" y="4" width="120" height="120" fill="url(#haze)"/>
+    <circle cx="112" cy="116" r="50" fill="#30D5E8" opacity="0.14"/>
+    <path d="M-8 94C20 78 40 84 58 96C76 108 98 110 136 92" fill="none" stroke="#FFFFFF" stroke-width="1.4" opacity="0.10"/>
+  </g>
+
+  <!-- 耳朵在头部之前画，头圆盖住耳根 -->
+  <path d="M32 58 27 24 55 41Z" fill="url(#fur)" stroke="#3B2418" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M96 58 101 24 73 41Z" fill="url(#fur)" stroke="#3B2418" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M34.5 48 32 32 46 41Z" fill="#F28B91" opacity="0.92"/>
+  <path d="M93.5 48 96 32 82 41Z" fill="#F28B91" opacity="0.92"/>
+
+  <circle cx="64" cy="72" r="33" fill="url(#fur)" stroke="#3B2418" stroke-width="4"/>
+  <!-- 额头虎斑 -->
+  <path d="M56 45c1.5 3 2 6 2 9M64 43v11M72 45c-1.5 3-2 6-2 9" fill="none" stroke="#B96832" stroke-width="2.6" stroke-linecap="round"/>
+
+  <!-- 眼睛 -->
+  <ellipse cx="52" cy="69" rx="3.6" ry="4.8" fill="#3B2418"/>
+  <ellipse cx="76" cy="69" rx="3.6" ry="4.8" fill="#3B2418"/>
+  <circle cx="53.2" cy="67.4" r="1.15" fill="#FFF8ED"/>
+  <circle cx="77.2" cy="67.4" r="1.15" fill="#FFF8ED"/>
+
+  <!-- 奶油色嘴套与鼻子 -->
+  <path d="M43 79c0-7 6-11 13-11 4 0 7 1.8 8 5 1-3.2 4-5 8-5 7 0 13 4 13 11 0 9-9 16-21 16S43 88 43 79Z" fill="#FFF3E2"/>
+  <path d="M64 76.5 59.5 72h9Z" fill="#E87882"/>
+  <path d="M64 76.5V82M64 82c-2.8 3-6 2.4-7.5-0.5M64 82c2.8 3 6 2.4 7.5-0.5" fill="none" stroke="#3B2418" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M47 76c-4-1-7 0-9 2M47 81c-4 0-7 2-8 4M81 76c4-1 7 0 9 2M81 81c4 0 7 2 8 4" fill="none" stroke="#3B2418" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
+
+  <!-- 右上角星光：新标签页 / AI 的标记 -->
+  <path d="M101 18c1.3 8.7 3.3 10.7 12 12-8.7 1.3-10.7 3.3-12 12-1.3-8.7-3.3-10.7-12-12 8.7-1.3 10.7-3.3 12-12Z" fill="#FFF8E8"/>
+  <circle cx="30" cy="37" r="2.6" fill="#FFFFFF" opacity="0.55"/>
+  <circle cx="27" cy="99" r="1.8" fill="#FFFFFF" opacity="0.35"/>
+</svg>
