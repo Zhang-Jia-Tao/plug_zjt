@@ -14,7 +14,7 @@ let saveChain = Promise.resolve();
 
 // 状态结构版本号：新增默认组件等增量变更时 +1，
 // 并在 migrateState 中补对应迁移逻辑（老用户自动升级，不动其已排好的布局）
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 // 预置背景色（设置面板可选）
 export const BG_PRESETS = [
@@ -41,6 +41,7 @@ export const DEFAULT_STATE = {
     { id: 'w-search',   key: 'search',       size: 'l', data: { engine: 'google', newTab: false } },
     { id: 'w-tc',       key: 'timeCalendar', size: 'm', data: { hour24: true, showSeconds: true, showTimezone: true, weekStart: 1, events: [] } },
     { id: 'w-sites',    key: 'topSites',     size: 'l', data: { showLimit: 10, newTab: false, customSites: [] } },
+    { id: 'w-github',   key: 'githubRanking', size: 'm', data: { period: 'day', showLimit: 10 } },
     { id: 'w-tasks',    key: 'stickyTasks',  size: 'm', data: { showLimit: 10 } },
     { id: 'w-focus',    key: 'focusTimer',   size: 'm', data: { minutes: 25, endAt: 0, remainingMs: 25 * 60 * 1000, running: false } },
     { id: 'w-music',    key: 'music',        size: 'm', data: { dirId: '', volume: 0.8, loopMode: 'off', shuffle: false } },
@@ -172,6 +173,14 @@ export function migrateState(state) {
     const keys = new Set(migrated.widgets.map(w => w.key));
     if (!keys.has('javaNotes')) {
       const def = DEFAULT_STATE.widgets.find(w => w.key === 'javaNotes');
+      if (def) migrated.widgets.push(structuredClone(def));
+    }
+  }
+  // v10 -> v11：追加「GitHub 星级榜」2×1 组件（已有则不重复添加）
+  if (version < 11) {
+    const keys = new Set(migrated.widgets.map(w => w.key));
+    if (!keys.has('githubRanking')) {
+      const def = DEFAULT_STATE.widgets.find(w => w.key === 'githubRanking');
       if (def) migrated.widgets.push(structuredClone(def));
     }
   }

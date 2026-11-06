@@ -29,8 +29,8 @@ test('v7 状态迁移会追加 focusTimer/stickyTasks，且不改变已有顺序
     ],
   };
   const migrated = migrateState(old);
-  assert.equal(migrated.settings.schemaVersion, 10);
-  assert.deepEqual(migrated.widgets.map(w => w.key), ['search', 'music', 'focusTimer', 'stickyTasks', 'javaNotes']);
+  assert.equal(migrated.settings.schemaVersion, 11);
+  assert.deepEqual(migrated.widgets.map(w => w.key), ['search', 'music', 'focusTimer', 'stickyTasks', 'javaNotes', 'githubRanking']);
   assert.equal(migrated.widgets[2].data.minutes, 25);
   assert.equal(migrated.widgets[3].data.showLimit, 10);
 });
@@ -41,8 +41,8 @@ test('v8 状态缺失 stickyTasks 时补回，已有组件不重复添加', () =
     widgets: [{ id: 'w-search', key: 'search', size: 'l', data: {} }],
   };
   const migrated = migrateState(missing);
-  assert.equal(migrated.settings.schemaVersion, 10);
-  assert.deepEqual(migrated.widgets.map(w => w.key), ['search', 'stickyTasks', 'javaNotes']);
+  assert.equal(migrated.settings.schemaVersion, 11);
+  assert.deepEqual(migrated.widgets.map(w => w.key), ['search', 'stickyTasks', 'javaNotes', 'githubRanking']);
 
   const existing = {
     settings: { schemaVersion: 8, theme: 'light' },
@@ -52,14 +52,28 @@ test('v8 状态缺失 stickyTasks 时补回，已有组件不重复添加', () =
     ],
   };
   const migratedExisting = migrateState(existing);
-  assert.equal(migratedExisting.settings.schemaVersion, 10);
-  assert.deepEqual(migratedExisting.widgets.map(w => w.key), ['search', 'stickyTasks', 'javaNotes']);
+  assert.equal(migratedExisting.settings.schemaVersion, 11);
+  assert.deepEqual(migratedExisting.widgets.map(w => w.key), ['search', 'stickyTasks', 'javaNotes', 'githubRanking']);
   assert.equal(migratedExisting.widgets[1].data.showLimit, 5);
 });
 
-test('已是 v10 的状态不重复迁移', () => {
-  const current = {
+test('v10 状态迁移会追加 GitHub 星级榜，且不重复已有组件', () => {
+  const old = {
     settings: { schemaVersion: 10, theme: 'light' },
+    widgets: [
+      { id: 'w-search', key: 'search', size: 'l', data: {} },
+      { id: 'w-java-notes', key: 'javaNotes', size: 'm', data: {} },
+    ],
+  };
+  const migrated = migrateState(old);
+  assert.equal(migrated.settings.schemaVersion, 11);
+  assert.deepEqual(migrated.widgets.map(w => w.key), ['search', 'javaNotes', 'githubRanking']);
+  assert.equal(migrated.widgets[2].size, 'm');
+});
+
+test('已是 v11 的状态不重复迁移', () => {
+  const current = {
+    settings: { schemaVersion: 11, theme: 'light' },
     widgets: [
       { id: 'w-search', key: 'search', size: 'l', data: {} },
       { id: 'w-java-notes', key: 'javaNotes', size: 'm', data: {} },

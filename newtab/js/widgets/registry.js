@@ -9,6 +9,7 @@ import search from './search.js';
 import topSites from './topSites.js';
 import music from './music.js';
 import javaNotes from './javaNotes.js';
+import githubRanking from './githubRanking.js';
 
 export const WIDGETS = [
   timeCalendar,
@@ -16,6 +17,7 @@ export const WIDGETS = [
   focusTimer,
   search,
   topSites,
+  githubRanking,
   music,
   javaNotes,
 ];

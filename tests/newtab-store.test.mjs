@@ -27,7 +27,7 @@ function makeChrome(initial) {
 test('保存时合并其他窗口的组件和设置，而不是整份旧状态覆盖', async () => {
   const initial = {
     newtab_state: {
-      settings: { schemaVersion: 10, theme: 'light', stickyExtId: '' },
+      settings: { schemaVersion: 11, theme: 'light', stickyExtId: '' },
       widgets: [{ id: 'w-base', key: 'search', size: 'l', data: {} }],
       _revision: 0,
     },
@@ -93,13 +93,15 @@ test('loadState 会把旧 schema 迁移结果整体写回', async () => {
   globalThis.chrome = m.chrome;
   try {
     const loaded = await loadState();
-    assert.equal(loaded.settings.schemaVersion, 10);
+    assert.equal(loaded.settings.schemaVersion, 11);
     assert.ok(loaded.widgets.some(w => w.key === 'focusTimer'));
     assert.ok(loaded.widgets.some(w => w.key === 'javaNotes'));
+    assert.ok(loaded.widgets.some(w => w.key === 'githubRanking'));
     const saved = m.data.newtab_state;
-    assert.equal(saved.settings.schemaVersion, 10);
+    assert.equal(saved.settings.schemaVersion, 11);
     assert.ok(saved.widgets.some(w => w.key === 'focusTimer'));
     assert.ok(saved.widgets.some(w => w.key === 'javaNotes'));
+    assert.ok(saved.widgets.some(w => w.key === 'githubRanking'));
   } finally {
     if (prev === undefined) delete globalThis.chrome;
     else globalThis.chrome = prev;

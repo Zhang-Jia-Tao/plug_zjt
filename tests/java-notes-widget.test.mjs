@@ -129,8 +129,9 @@ test('扩展接线：widget 注册、默认布局、命令转发', () => {
   const store = fs.readFileSync(path.join(root, 'newtab/js/store.js'), 'utf8');
   const background = fs.readFileSync(path.join(root, 'newtab/background.js'), 'utf8');
   assert.match(registry, /javaNotes/);
+  assert.match(registry, /githubRanking/);
   assert.match(store, /key: 'javaNotes'/);
-  assert.match(store, /SCHEMA_VERSION = 10/);
+  assert.match(store, /SCHEMA_VERSION = 11/);
   assert.match(background, /forwardProjectCommand/);
   assert.match(background, /type: 'project:command'/);
   assert.match(background, /forwardProjectMessage/);
