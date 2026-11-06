@@ -55,7 +55,7 @@ uninstall-host.bat
 - **本地 HTTP 探测只连 localhost**：新增应用只访问清单里的 `127.0.0.1` 端口，不接受任意 URL/命令。
 - **端口冲突保护**：8080/5000 这类共用端口默认只在对应进程存在时探测，避免把别的服务误判成某个 AI。
 - **网页 AI 只读状态**：`content-webai.js` 仅在 AI 域名运行，只上报 host/status/title/active，不读取聊天正文、不 hook 网络请求。
-- **项目监管只认固定项目**：`project-supervisor.mjs` 只操作 `Java终极笔记`（可用 `JAVA_NOTES_ROOT` 覆盖），命令白名单固定为 start/stop/restart/build/backup/logs；扩展不能传任意路径、任意命令。
+- **项目监管只操作 Java 终极笔记目录**：组件可以配置启动目录，host 只接受绝对路径（支持 `%USERPROFILE%`/`~`），命令白名单仍固定为 start/stop/restart/build/backup/logs；扩展不能传任意命令，host 也不会按端口杀进程。
 - **不按端口杀进程**：启动前发现 4321/4400 被其他程序占用会拒绝启动；停止前用进程命令行确认 node 进程属于该项目，避免误杀其他服务。
 - **学习数据本机闭环**：usage/review/annotations 只从本机 4400 或 `site/server-data` 读取，不上传远端。
 
@@ -63,8 +63,10 @@ uninstall-host.bat
 
 扩展的 `javaNotes` 2×1 组件通过 host 管理本地站点：
 
-- 默认项目根目录：`%USERPROFILE%\IdeaProjects\Java终极笔记`（可用 `JAVA_NOTES_ROOT` 覆盖）
-- 可用环境变量 `JAVA_NOTES_ROOT` 覆盖（host 启动前设置）
+- 默认项目根目录：`%USERPROFILE%\IdeaProjects\Java终极笔记`（可被组件配置或 `JAVA_NOTES_ROOT` 覆盖）
+- 组件设置「启动目录」后，通过 `project:watch` / `project:command` 的 `root` 字段传给 host；留空使用默认目录，支持 `%USERPROFILE%`、`~` 和引号，相对路径会被拒绝
+- host 启动时仍可用环境变量 `JAVA_NOTES_ROOT` 覆盖默认值
+- 端口归属按该目录 `.run/pids.json` 的 PID 判断；切换到另一个目录后，原目录的 4321/4400 会被显示为端口冲突，而不是误认成新目录的服务
 - 4321：Astro dev / preview；4400：批注与统计服务
 - 学习数据优先走 4400 的 `/api/usage/summary`、`/api/review/log`、`/api/anno/all`；
   服务离线时回退到 `site/server-data/*.json` 快照，并在 UI 标记为「本地文件快照」
@@ -93,7 +95,7 @@ host 侧另有 **512 KB 快照预算**：`snapshot` 只带回最近 30 秒的消
 { "type": "dialog:closed", "id": 12345 }
 { "type": "sys", "metrics": { "cpu": 12.3, "mem": 45.6, "gpu": 3.0, "vramUsed": 0.8, "vramTotal": 8.0 } }
 { "type": "snapshot", "apps": [], "dialogs": [], "messages": [], "sessions": [], "tasks": { "active": [], "recent": [] }, "javaNotes": { "state": "running_full" } }
-{ "type": "project:state", "project": "java-notes", "state": { "state": "running_site_only", "site": {}, "anno": {}, "learning": {} } }
+{ "type": "project:state", "project": "java-notes", "state": { "root": "C:\\...\\Java终极笔记", "defaultRoot": "C:\\Users\\...\\Java终极笔记", "state": "running_site_only", "site": {}, "anno": {}, "learning": {} } }
 { "type": "project:result", "requestId": "uuid", "ok": true, "state": {}, "message": "正在启动站点…" }
 { "type": "error", "message": "..." }
 ```
@@ -104,10 +106,11 @@ host 侧另有 **512 KB 快照预算**：`snapshot` 只带回最近 30 秒的消
 { "type": "query" }
 { "type": "sysmon", "fast": true }
 { "type": "dialog:respond", "dialogId": 12345, "buttonId": "确定" }
-{ "type": "project:watch", "watch": true }
-{ "type": "project:command", "requestId": "uuid", "command": "start", "payload": { "withAnno": true } }
+{ "type": "project:watch", "watch": true, "root": "D:\\code\\Java终极笔记" }
+{ "type": "project:command", "requestId": "uuid", "root": "D:\\code\\Java终极笔记", "command": "start", "payload": { "withAnno": true } }
 ```
 
+- `project:watch` / `project:command` 的可选 `root` 为启动目录；省略时沿用当前目录，空字符串表示回到默认目录。host 会把 `root` 归一化为绝对路径，非法路径返回 `invalid_root`。
 - `project:command` 白名单：`start` / `stop` / `restart` / `build` / `backup` / `logs` / `refresh`。
   命令立即返回 `project:result`，启动/构建的后续状态由 `project:state` 推送。
 

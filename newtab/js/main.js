@@ -295,6 +295,12 @@ function renderSettingsPanel() {
   }
 }
 
+function escapeAttr(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 // 按 widget 定义生成配置表单行（key 对应 data 字段名）
 function buildConfigRows(w, def) {
   const rows = [];
@@ -317,6 +323,15 @@ function buildConfigRows(w, def) {
             ${c.options.map(o => `<option value="${o.value}" ${String(cur) === String(o.value) ? 'selected' : ''}>${o.label}</option>`).join('')}
           </select>
         </label>
+      `);
+    } else if (c.type === 'text') {
+      rows.push(`
+        <label class="wci-row">
+          <span>${c.label}</span>
+          <input type="text" data-cfg="${c.key}" value="${escapeAttr(cur)}"
+            placeholder="${escapeAttr(c.placeholder || '')}" autocomplete="off" spellcheck="false" />
+        </label>
+        ${c.hint ? `<div class="wci-hint">${escapeAttr(c.hint)}</div>` : ''}
       `);
     }
   }

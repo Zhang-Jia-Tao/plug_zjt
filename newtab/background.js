@@ -14,27 +14,39 @@ import { matchWebAiSite, webAiSiteById } from './js/webai-sites.js';
 // SW 把 host 推送的事件广播到所有订阅连接。
 let aiPort = null;
 const aiSubscribers = new Set(); // 页面 port（onDisconnect 自动摘除）
+let projectRoot = ''; // 组件配置的 Java 终极笔记启动目录；host 重启后用它恢复
+let noSubscriberTimer = null; // 全部页面断开后延迟降频，避免刷新页面时 false 晚于新订阅的 true
 
 chrome.runtime.onConnect.addListener((pagePort) => {
   if (pagePort.name !== 'ai:subscribe') return;
   aiSubscribers.add(pagePort);
+  clearTimeout(noSubscriberTimer);
+  noSubscriberTimer = null;
   pagePort.onMessage.addListener((msg) => forwardProjectCommand(pagePort, msg));
   pagePort.onDisconnect.addListener(() => {
     aiSubscribers.delete(pagePort);
-    // 全部页面断开：sysmon 降频（host 侧 15s 低频轮询省 CPU）
+    // 全部页面断开：延迟再降频。设置页改动会销毁/重建 widget，
+    // 旧 port 的 disconnect 可能晚于新 port 的 watch:true；立即发 false
+    // 会把新实例刚开启的监控关掉（表现为一直“正在读取”）。
     if (aiSubscribers.size === 0) {
-      const p = aiPort;
-      if (p) {
+      clearTimeout(noSubscriberTimer);
+      noSubscriberTimer = setTimeout(() => {
+        noSubscriberTimer = null;
+        if (aiSubscribers.size > 0) return;
+        const p = aiPort;
+        if (!p) return;
         try { p.postMessage({ type: 'sysmon', fast: false }); } catch {}
         try { p.postMessage({ type: 'project:watch', watch: false }); } catch {}
-      }
+      }, 300);
     }
   });
   // 新订阅者：确保 host 连接活着，并立即请求一份快照
   const port = ensureAiPort();
   if (port) {
     try { port.postMessage({ type: 'query' }); } catch { /* host 刚断开，等重连 */ }
-    try { port.postMessage({ type: 'project:watch', watch: true }); } catch {}
+    // 项目监控不在这里抢发 watch：页面里的 Java 笔记组件会立刻带着
+    // 自己配置的 root 发 project:watch，避免这里用旧的 projectRoot
+    // 把新组件刚切好的目录又切回去。
   } else {
     pagePort.postMessage({ action: 'ai:event', payload: { type: 'host:error', message: 'host 未连接（是否已运行 install-host.bat？）' } });
   }
@@ -61,7 +73,7 @@ function ensureAiPort() {
   // 学习台停在旧快照上。
   if (aiSubscribers.size > 0) {
     try { aiPort.postMessage({ type: 'query' }); } catch {}
-    try { aiPort.postMessage({ type: 'project:watch', watch: true }); } catch {}
+    try { aiPort.postMessage({ type: 'project:watch', watch: true, root: projectRoot }); } catch {}
   }
   return aiPort;
 }
@@ -75,7 +87,18 @@ function broadcastAi(msg) {
 // 页面 → host 的项目命令转发。页面只提交命令名和少量布尔/数字参数，
 // 真正的项目路径、启动脚本、进程白名单都在 host 侧硬编码，扩展不能传任意命令。
 function forwardProjectCommand(pagePort, msg) {
-  if (!msg || msg.action !== 'project:command') return;
+  if (!msg) return;
+  if (msg.action === 'project:watch') {
+    if (typeof msg.root === 'string') projectRoot = msg.root.trim();
+    const p = ensureAiPort();
+    if (!p) return;
+    try {
+      p.postMessage({ type: 'project:watch', watch: msg.watch !== false, root: projectRoot });
+    } catch { /* host 刚断开，等 reconnect 时补发 */ }
+    return;
+  }
+  if (msg.action !== 'project:command') return;
+  if (typeof msg.root === 'string') projectRoot = msg.root.trim();
   const requestId = msg.requestId;
   const port = ensureAiPort();
   if (!port) {
@@ -94,6 +117,7 @@ function forwardProjectCommand(pagePort, msg) {
     port.postMessage({
       type: 'project:command',
       requestId,
+      root: projectRoot,
       command: String(msg.command || ''),
       payload: msg.payload && typeof msg.payload === 'object' ? msg.payload : {},
     });

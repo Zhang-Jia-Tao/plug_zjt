@@ -8,6 +8,9 @@ import {
   normalizeLearning,
   classifyState,
   stripAnsi,
+  normalizeProjectRoot,
+  DEFAULT_PROJECT_ROOT,
+  ProjectError,
 } from '../ai_manager_host/project-supervisor.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -81,6 +84,27 @@ test('状态分类：停止 / 部分运行 / 完整运行 / 端口冲突', () =>
   }), 'starting');
 });
 
+test('启动目录归一化：默认、绝对路径、引号、环境变量与非法相对路径', () => {
+  const target = path.resolve(process.cwd(), 'code', 'Java终极笔记');
+  const envRoot = path.resolve(process.cwd(), 'work');
+  assert.equal(normalizeProjectRoot('', { defaultRoot: DEFAULT_PROJECT_ROOT }), path.resolve(DEFAULT_PROJECT_ROOT));
+  assert.equal(
+    normalizeProjectRoot(`  "${target}"  `, { defaultRoot: DEFAULT_PROJECT_ROOT }),
+    target,
+  );
+  assert.equal(
+    normalizeProjectRoot('%TEST_JN_ROOT%/notes', {
+      defaultRoot: DEFAULT_PROJECT_ROOT,
+      env: { ...process.env, TEST_JN_ROOT: envRoot },
+    }),
+    path.join(envRoot, 'notes'),
+  );
+  assert.throws(
+    () => normalizeProjectRoot('relative/notes', { defaultRoot: DEFAULT_PROJECT_ROOT }),
+    (e) => e instanceof ProjectError && e.code === 'invalid_root',
+  );
+});
+
 test('日志去掉 ANSI 控制序列且保留中文', () => {
   const raw = '\u001b[32m✓ 站点就绪\u001b[0m\r\n\u001b[2m16:38\u001b[22m /project';
   const clean = stripAnsi(raw);
@@ -92,11 +116,12 @@ test('日志去掉 ANSI 控制序列且保留中文', () => {
 
 test('host 注册项目监管并暴露快照/命令', () => {
   const host = fs.readFileSync(path.join(root, 'ai_manager_host/host.mjs'), 'utf8');
-  assert.match(host, /import \{ JavaNotesProject \} from '\.\/project-supervisor\.mjs'/);
+  assert.match(host, /import \{[^}]*JavaNotesProject[^}]*\} from '\.\/project-supervisor\.mjs'/);
   assert.match(host, /javaNotes: javaNotes \? javaNotes\.getSnapshot\(\) : null/);
   assert.match(host, /case 'project:watch'/);
   assert.match(host, /case 'project:command'/);
   assert.match(host, /new JavaNotesProject\(/);
+  assert.match(host, /switchJavaNotesRoot/);
 });
 
 test('扩展接线：widget 注册、默认布局、命令转发', () => {
@@ -110,4 +135,9 @@ test('扩展接线：widget 注册、默认布局、命令转发', () => {
   assert.match(background, /type: 'project:command'/);
   assert.ok(fs.existsSync(path.join(root, 'newtab/js/widgets/javaNotes.js')));
   assert.ok(fs.existsSync(path.join(root, 'newtab/css/widgets.css')));
+  const widget = fs.readFileSync(path.join(root, 'newtab/js/widgets/javaNotes.js'), 'utf8');
+  const main = fs.readFileSync(path.join(root, 'newtab/js/main.js'), 'utf8');
+  assert.match(widget, /key: 'root'[\s\S]*?type: 'text'/);
+  assert.match(widget, /root: projectRoot/);
+  assert.match(main, /c\.type === 'text'/);
 });

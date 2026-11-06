@@ -71,11 +71,25 @@ function relativeTime(ts, now = Date.now()) {
   return `${Math.floor(diff / 86_400_000)} 天前`;
 }
 
+function normalizeRootPath(value) {
+  return String(value || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+}
+
 export default {
   key: 'javaNotes',
   label: 'Java 终极笔记 · 学习台',
   description: '一键启动 Java 终极笔记，查看今日复习、学习位置、批注与服务状态',
-  defaultData: {},
+  defaultData: { root: '' },
+  config: [
+    {
+      key: 'root',
+      label: '启动目录',
+      type: 'text',
+      default: '',
+      placeholder: '留空使用 %USERPROFILE%\\IdeaProjects\\Java终极笔记',
+      hint: '支持 %USERPROFILE% 和 ~；必须是绝对路径。改完会自动重连 host。',
+    },
+  ],
 
   init(container, data, api) {
     const el = document.createElement('div');
@@ -137,10 +151,12 @@ export default {
       anno: el.querySelector('[data-svc="anno"]'),
     };
 
+    const projectRoot = String(data?.root || '').trim();
     let current = null;
     let port = null;
     let disposed = false;
     let reconnectTimer = null;
+    let watchRetryTimer = null;
     let reconnectDelay = 1000;
     let hostError = '';
     let uiError = '';
@@ -158,6 +174,13 @@ export default {
 
     function applyState(next) {
       if (!next || typeof next !== 'object') return;
+      // 多个学习台指向不同目录时，只认自己配置的目录；没配置时认 host 默认目录。
+      // %VAR%/~ 由 host 展开，这里不做字符串比较，避免误判。
+      const expectedRoot = projectRoot || next.defaultRoot || '';
+      if (expectedRoot && next.root && !/[%]/.test(projectRoot) && !projectRoot.startsWith('~')
+        && normalizeRootPath(next.root) !== normalizeRootPath(expectedRoot)) {
+        return;
+      }
       clearTimeout(firstStateTimer);
       hostError = '';
       const prev = current;
@@ -302,6 +325,13 @@ export default {
     }
 
     // ---- 与 host 的命令通道 ----
+    function sendWatch(watch) {
+      if (!port) return;
+      try {
+        port.postMessage({ action: 'project:watch', watch, root: projectRoot });
+      } catch { /* 端口刚断开，重连后再补发 */ }
+    }
+
     function connect() {
       if (disposed || port) return;
       try {
@@ -328,6 +358,9 @@ export default {
           connect();
         }, reconnectDelay);
       });
+      // 把组件配置的目录告诉 background/host；background 会在 host
+      // 重连和页面重开时用同一个目录恢复监控。
+      sendWatch(true);
     }
 
     function onEvent(ev) {
@@ -381,7 +414,7 @@ export default {
         }, timeout);
         pending.set(requestId, { resolve, reject, timer });
         try {
-          port.postMessage({ action: 'project:command', requestId, command: name, payload });
+          port.postMessage({ action: 'project:command', requestId, root: projectRoot, command: name, payload });
         } catch (e) {
           pending.delete(requestId);
           clearTimeout(timer);
@@ -458,6 +491,7 @@ export default {
           </div>
           <button type="button" class="jn-pop-close" data-k="close" title="关闭">✕</button>
         </div>
+        <div class="jn-pop-root" data-k="root"></div>
         <div class="jn-services">
           <div class="jn-service" data-svc="site">
             <span class="jn-dot"></span>
@@ -541,6 +575,10 @@ export default {
       popover.querySelector('[data-k="anno-pid"]').textContent = anno.pid ? `pid ${anno.pid}` : '';
       popover.querySelector('[data-svc="site"]').dataset.state = statusClass(site);
       popover.querySelector('[data-svc="anno"]').dataset.state = statusClass(anno);
+      const rootEl = popover.querySelector('[data-k="root"]');
+      const shownRoot = s.root || projectRoot || '默认目录';
+      rootEl.textContent = `目录：${shownRoot}`;
+      rootEl.title = shownRoot;
       const checked = s.checkedAt ? `更新于 ${relativeTime(s.checkedAt)}` : '等待状态';
       const learning = s.learning;
       const dataNote = learning?.ok
@@ -603,12 +641,21 @@ export default {
     }
 
     connect();
+    // 首帧还没拿到状态时重发 watch：设置页重渲染/原生端口刚重连时，
+    // 单次 postMessage 可能丢失；重发同一个 root 在 host 侧是幂等的。
+    watchRetryTimer = setInterval(() => {
+      // 刚切换目录时 host 会先推一个 unknown 占位；如果这一轮轮询没被
+      // 启动（或消息丢了），current 会停在 unknown，也要继续重发 watch。
+      const pendingFirstState = !current || current.state === 'unknown';
+      if (pendingFirstState && !hostError) sendWatch(true);
+    }, 1200);
     render();
 
     return () => {
       disposed = true;
       clearTimeout(firstStateTimer);
       clearTimeout(reconnectTimer);
+      clearInterval(watchRetryTimer);
       clearTimeout(uiErrorTimer);
       for (const entry of pending.values()) clearTimeout(entry.timer);
       pending.clear();

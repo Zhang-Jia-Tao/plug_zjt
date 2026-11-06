@@ -171,7 +171,20 @@ body.settings-open { overflow: hidden; }
   font-size: 12px;
   outline: none;
 }
+.wci-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  background: var(--card-hover);
+  border: 1px solid var(--card-border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  outline: none;
+}
+.wci-row input[type="text"]:focus { border-color: var(--primary); }
 .wci-row input[type="checkbox"] { cursor: pointer; }
+.wci-hint { margin-top: -3px; font-size: 11px; color: var(--muted); line-height: 1.45; }
 
 /* 通用按钮 */
 .btn {

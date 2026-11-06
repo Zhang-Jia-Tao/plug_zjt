@@ -76,8 +76,10 @@ export default {
 - 固定展示今日复习、累计学习时长、批注数；批注服务离线时读取 `server-data` 本地快照并标注「本地快照」。
 - 快捷入口：今日复习 `/review`、Hot200 `/hot200`、项目 `/project`、源码图谱 `/project/source/graph`；站点未启动时会先拉起再打开。
 - `⋯` 管理弹层：站点/批注 PID、重启、停止、构建预览、导出备份、刷新日志。
-- 实际启停由 host 的 `project-supervisor.mjs` 执行；页面只通过 `project:command` 触发，不能传任意路径。
-- 默认项目路径可用 host 环境变量 `JAVA_NOTES_ROOT` 覆盖。
+- 实际启停由 host 的 `project-supervisor.mjs` 执行；页面只通过 `project:command` 触发，不能传任意命令。
+- 组件设置里可配置「启动目录」：留空使用默认 `%USERPROFILE%\IdeaProjects\Java终极笔记`；支持绝对路径、`%USERPROFILE%` 和 `~`，不支持相对路径。改完会重连 host 并按新目录重新监控。
+- host 默认目录仍可用环境变量 `JAVA_NOTES_ROOT` 覆盖；host 只认该目录 `.run/pids.json` 中的 PID 来判断 4321/4400 归属。
+- 切换目录不会自动停止旧目录已启动的服务；4321/4400 是固定端口，若旧服务还在运行，新目录会显示端口冲突，请先在旧目录配置下停止再切换。
 
 ### 便利贴任务
 

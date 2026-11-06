@@ -34,6 +34,31 @@ export class ProjectError extends Error {
   }
 }
 
+// 把用户在组件里填写的目录归一成绝对路径。
+// 支持留空（默认目录）、引号、%USERPROFILE% 环境变量和 ~；相对路径直接拒绝，
+// 避免 host 按自己的 cwd 猜目录。
+export function normalizeProjectRoot(raw, {
+  defaultRoot = DEFAULT_PROJECT_ROOT,
+  env = process.env,
+} = {}) {
+  let text = String(raw ?? '').trim();
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    text = text.slice(1, -1).trim();
+  }
+  if (!text) return path.resolve(defaultRoot);
+  text = text.replace(/%([^%]+)%/g, (whole, name) => (
+    Object.prototype.hasOwnProperty.call(env, name) ? env[name] : whole
+  ));
+  if (text === '~') text = os.homedir();
+  else if (text.startsWith('~/') || text.startsWith('~\\')) {
+    text = path.join(os.homedir(), text.slice(2));
+  }
+  if (!path.isAbsolute(text)) {
+    throw new ProjectError('invalid_root', `启动目录必须是绝对路径：${text}`);
+  }
+  return path.resolve(text);
+}
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function stripAnsi(input) {
@@ -148,6 +173,7 @@ export function classifyState({ busy, phase, site, anno, lastError }) {
 function emptyState() {
   return {
     project: 'java-notes',
+    root: '',
     state: 'unknown',
     phase: 'idle',
     message: '',
@@ -289,6 +315,8 @@ export class JavaNotesProject {
     this.now = now;
 
     this.state = emptyState();
+    this.state.root = this.root;
+    this.state.defaultRoot = DEFAULT_PROJECT_ROOT;
     this.busy = false;
     this.phase = 'idle';
     this.lastError = null;
@@ -349,6 +377,8 @@ export class JavaNotesProject {
   }
 
   _emit(force = false) {
+    // 切目录后旧实例可能还有在途 refresh；disposed 后不再推旧目录状态。
+    if (this.disposed) return;
     // checkedAt / snapshotAt 是展示用的每秒变化值，不能让它们触发重复推送；
     // 只在服务状态或学习数据真正变化时发 project:state。
     const sig = JSON.stringify({
@@ -417,21 +447,21 @@ export class JavaNotesProject {
       if (annoPortOpen) annoHealth = await fetchJson(`http://127.0.0.1:${ANNO_PORT}/api/health`);
 
       const siteOk = !!siteHttp.ok;
-      // 不仅看 ok，还要有批注服务的统计字段，避免 4400 上别的服务碰巧返回 ok。
-      const annoOk = !!annoHealth?.ok
+      // 关键：端口归属只认本项目 .run/pids.json 里记录的 PID（且进程还活着）。
+      // 不能单凭页面里有「Java」就认领 4321——用户切换启动目录后，旧目录的
+      // 站点同样会返回 Java 页面；没有 pids 记录时宁可显示端口冲突。
+      // pids 由本项目 start.ps1 写入，逐轮再跑 PowerShell 查监听 PID 太贵；
+      // 真正的启动/停止前仍会用 _verifyOwned 做一次强校验。
+      const annoHealthOk = !!annoHealth?.ok
         && (Number.isFinite(Number(annoHealth.pages)) || Number.isFinite(Number(annoHealth.usageModules)));
-      // 本地项目标题/路由标记；pids 能确认归属时无需依赖 HTML 文案。
-      const ownByHtml = /Java|面试笔记|hot200|project\/source/i.test(siteHttp.text || '');
-      let siteOwn = siteOk && ownByHtml;
-      // 页面文案没有标记时，只有「pids 里的 site PID == 4321 实际监听 PID」
-      // 才算本项目，避免 pids 过期时把别的服务误认成自己的站点。
-      if (siteOk && !siteOwn && sitePid) {
-        const owner = await listenerPid(SITE_PORT);
-        siteOwn = owner === sitePid;
-      }
-      // 只有 HTTP 已响应且内容不是本项目时才判「外部占用」。
+      const siteOwn = !!sitePid;
+      // 只有 HTTP 已响应且无法确认是本项目时才判「外部占用」。
       // 端口刚监听但 HTTP 还没起来时算 unknown，不能误报 port_conflict。
       const siteForeign = siteOk && !siteOwn;
+
+      // 批注服务同样按 pids 校验，避免切换目录后把旧目录的 4400
+      // 当成新目录的批注服务（学习数据会串）。
+      const annoOk = annoHealthOk && !!annoPid;
 
       if (siteOk) {
         if (!this.siteStartedAt) this.siteStartedAt = pidsMtime || this.now();
@@ -486,6 +516,7 @@ export class JavaNotesProject {
       const state = classifyState({ busy: this.busy, phase: this.phase, site, anno, lastError: this.lastError });
       this.state = {
         ...this.state,
+        root: this.root,
         state,
         busy: this.busy,
         phase: this.phase,

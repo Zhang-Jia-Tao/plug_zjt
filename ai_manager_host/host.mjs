@@ -29,7 +29,7 @@ import { zstdDecompressSync } from 'node:zlib';
 import { extractModelInfo, formatAppDetail } from './probe.mjs';
 import { TaskTracker } from './task-tracker.mjs';
 import { scanZstdFrames } from './zstd-frames.mjs';
-import { JavaNotesProject } from './project-supervisor.mjs';
+import { JavaNotesProject, DEFAULT_PROJECT_ROOT, normalizeProjectRoot } from './project-supervisor.mjs';
 import { fileURLToPath } from 'node:url';
 
 const HOST_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -107,6 +107,7 @@ const taskTracker = new TaskTracker({ historyLimit: 12 });
 let lastTasksJson = '';
 // Java 终极笔记项目监管：由页面订阅时高频轮询；没有页面时保持低频。
 // 具体端口探测、启动/停止、日志、学习数据读取都在 project-supervisor.mjs。
+// 根目录由组件配置（watch/command 的 root 字段）驱动；host 只认绝对路径。
 let javaNotes = null;
 
 function tasksSnapshot() {
@@ -130,6 +131,37 @@ function projectFromCwd(cwd) {
 
 function findActiveTask(app, id) {
   return taskTracker.getActive(app, id);
+}
+
+function sameProjectRoot(a, b) {
+  const norm = (p) => String(p || '').replace(/[\\/]+$/, '').replace(/\//g, '\\');
+  return process.platform === 'win32'
+    ? norm(a).toLowerCase() === norm(b).toLowerCase()
+    : norm(a) === norm(b);
+}
+
+function createJavaNotesProject(root) {
+  const project = new JavaNotesProject({
+    root,
+    onState: (state) => post({ type: 'project:state', project: 'java-notes', state }),
+  });
+  project.start();
+  return project;
+}
+
+// 切换监管目录：不停止旧目录已经启动的服务，只切换监控/后续命令的目标。
+// 新目录会在下一次 4s 轮询（或首次 refresh）后给出状态。
+function switchJavaNotesRoot(rawRoot) {
+  const root = normalizeProjectRoot(rawRoot);
+  if (javaNotes && sameProjectRoot(javaNotes.root, root)) return javaNotes;
+  javaNotes?.dispose();
+  javaNotes = createJavaNotesProject(root);
+  post({
+    type: 'project:state',
+    project: 'java-notes',
+    state: javaNotes.getSnapshot(),
+  });
+  return javaNotes;
 }
 
 // snapshot 字节预算：Chrome 对 host→扩展 单条消息限 1MB，超限会杀死连接。
@@ -173,15 +205,39 @@ function handleRequest(msg) {
       setSysmonFast(!!msg.fast);
       break;
     case 'project:watch':
-      javaNotes?.setWatched(!!msg.watch);
+      try {
+        // 老版本扩展不发 root；保持当前目录，避免误切回默认。
+        if (Object.prototype.hasOwnProperty.call(msg, 'root')) switchJavaNotesRoot(msg.root);
+        javaNotes?.setWatched(!!msg.watch);
+        // 每次 watch 都回一份当前快照：组件在切换目录/端口重连后会重发
+        // watch，如果状态签名没变（_emit 会去重），只靠下一次 tick 可能
+        // 让 UI 一直停在“正在读取”。这里强制回包，组件看到状态后停止重试。
+        if (msg.watch !== false && javaNotes) {
+          post({ type: 'project:state', project: 'java-notes', state: javaNotes.getSnapshot() });
+        }
+      } catch (e) {
+        post({ type: 'host:error', message: e?.message || String(e) });
+      }
       break;
     case 'project:command': {
       const requestId = msg.requestId;
-      if (!javaNotes) {
+      let project = javaNotes;
+      try {
+        if (Object.prototype.hasOwnProperty.call(msg, 'root')) project = switchJavaNotesRoot(msg.root);
+      } catch (e) {
+        post({
+          type: 'project:result',
+          requestId,
+          ok: false,
+          error: { code: e?.code || 'invalid_root', message: e?.message || String(e), detail: e?.detail || '' },
+        });
+        break;
+      }
+      if (!project) {
         post({ type: 'project:result', requestId, ok: false, error: { code: 'host_not_ready', message: '项目监管尚未初始化' } });
         break;
       }
-      javaNotes.handleCommand(msg.command, msg.payload || {})
+      project.handleCommand(msg.command, msg.payload || {})
         .then((result) => post({ type: 'project:result', requestId, ...result }))
         .catch((e) => post({
           type: 'project:result',
@@ -1521,9 +1577,6 @@ setInterval(checkDshBusyWatchdog, 5000).unref();
 setInterval(() => { if (taskTracker.tick()) syncTasks(); }, 5000).unref();
 scheduleSysmon();
 
-javaNotes = new JavaNotesProject({
-  onState: (state) => post({ type: 'project:state', project: 'java-notes', state }),
-});
-javaNotes.start();
+javaNotes = createJavaNotesProject(DEFAULT_PROJECT_ROOT);
 
 post({ type: 'host:ready' });
