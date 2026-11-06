@@ -55,5 +55,5 @@ test('GitHub 榜单注册、缓存与网络来源已接线', () => {
   assert.match(widget, /DOMParser/);
   assert.ok(manifest.host_permissions.includes('https://github.com/*'));
   assert.ok(manifest.host_permissions.includes('https://api.github.com/*'));
-  assert.equal(manifest.version, '1.6.0');
+  assert.equal(manifest.version, '1.7.0');
 });

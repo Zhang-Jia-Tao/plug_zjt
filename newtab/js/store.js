@@ -14,7 +14,7 @@ let saveChain = Promise.resolve();
 
 // 状态结构版本号：新增默认组件等增量变更时 +1，
 // 并在 migrateState 中补对应迁移逻辑（老用户自动升级，不动其已排好的布局）
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 // 预置背景色（设置面板可选）
 export const BG_PRESETS = [
@@ -42,10 +42,15 @@ export const DEFAULT_STATE = {
     { id: 'w-tc',       key: 'timeCalendar', size: 'm', data: { hour24: true, showSeconds: true, showTimezone: true, weekStart: 1, events: [] } },
     { id: 'w-sites',    key: 'topSites',     size: 'l', data: { showLimit: 10, newTab: false, customSites: [] } },
     { id: 'w-github',   key: 'githubRanking', size: 'm', data: { period: 'day', showLimit: 10 } },
+    { id: 'w-github-workbench', key: 'githubWorkbench', size: 'm', data: { tab: 'review' } },
+    { id: 'w-ai-cost',  key: 'aiCost',       size: 'm', data: { budget: '20' } },
+    { id: 'w-dep-radar', key: 'dependencyRadar', size: 'm', data: { repo: '', branch: 'HEAD' } },
+    { id: 'w-prompt-vault', key: 'promptVault', size: 'm', data: {} },
+    { id: 'w-dev-services', key: 'devServices', size: 'm', data: { services: [] } },
     { id: 'w-tasks',    key: 'stickyTasks',  size: 'm', data: { showLimit: 10 } },
-    { id: 'w-focus',    key: 'focusTimer',   size: 'm', data: { minutes: 25, endAt: 0, remainingMs: 25 * 60 * 1000, running: false } },
     { id: 'w-music',    key: 'music',        size: 'm', data: { dirId: '', volume: 0.8, loopMode: 'off', shuffle: false } },
     { id: 'w-java-notes', key: 'javaNotes',  size: 'm', data: { root: '' } },
+    { id: 'w-focus',    key: 'focusTimer',   size: 'm', data: { minutes: 25, endAt: 0, remainingMs: 25 * 60 * 1000, running: false } },
   ],
 };
 
@@ -182,6 +187,24 @@ export function migrateState(state) {
     if (!keys.has('githubRanking')) {
       const def = DEFAULT_STATE.widgets.find(w => w.key === 'githubRanking');
       if (def) migrated.widgets.push(structuredClone(def));
+    }
+  }
+  // v11 -> v12：追加 5 个开发者工作组，并把番茄钟移到最后。
+  // 番茄钟只移动、不重复添加；用户已删除的组件不强行恢复。
+  if (version < 12) {
+    const keys = new Set(migrated.widgets.map(w => w.key));
+    for (const key of ['githubWorkbench', 'aiCost', 'dependencyRadar', 'promptVault', 'devServices']) {
+      if (keys.has(key)) continue;
+      const def = DEFAULT_STATE.widgets.find(w => w.key === key);
+      if (def) {
+        migrated.widgets.push(structuredClone(def));
+        keys.add(key);
+      }
+    }
+    const focus = migrated.widgets.find(w => w.key === 'focusTimer');
+    if (focus) {
+      migrated.widgets = migrated.widgets.filter(w => w !== focus);
+      migrated.widgets.push(focus);
     }
   }
   return migrated;

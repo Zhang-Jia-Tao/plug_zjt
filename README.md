@@ -62,8 +62,14 @@ Native Messaging 注册表（无需管理员）。版本库里的 `com.zjt.ai_ma
 
 ### 新标签页（`newtab/`）
 
-- **小组件网格**：时间日历、搜索、常用网站、便利贴任务、番茄钟、本地音乐、Java 终极笔记 · 学习台、GitHub 星级榜；支持拖拽排序、尺寸切换、编辑模式。
+- **小组件网格**：时间日历、搜索、常用网站、便利贴任务、本地音乐、Java 终极笔记 · 学习台、GitHub 星级榜、GitHub 工作台、AI 成本、依赖雷达、Prompt 速取、开发服务；支持拖拽排序、尺寸切换、编辑模式。番茄专注默认在布局最后。
 - **GitHub 星级榜**：日/周/月读取 GitHub Trending 的周期新增 Star，年榜按近一年新项目总 Star 排序；带本地缓存、速率限制提示，热榜不可用时自动降级到 Search API。
+- **GitHub 工作台**：待我审 / 我的 PR / CI 失败三视图；使用本地保存的只读 Personal Access Token，不写入新标签页状态。
+- **AI 成本与配额**：汇总 AI 管理器中的当前会话 token，按公开单价估算成本，并用预算条提示用量。
+- **依赖与漏洞雷达**：读取公开 GitHub 仓库的直接 npm 依赖，通过 npm 安全公告批量接口检查已知漏洞。
+- **Prompt 速取**：本地 Prompt / 代码片段 / 命令库，点击复制，支持新增、编辑、删除。
+- **开发服务台**：探测本地 Vite、Java 学习台、Ollama 等 http://localhost 服务的状态与延迟，只读探测、不执行启停。
+> GitHub 工作台需要自备只读 Personal Access Token（单独保存在 `chrome.storage.local`，不写入组件状态）；依赖雷达仅扫描公开 GitHub 仓库的直接 npm 依赖；开发服务台仅做健康探测，不执行启停。
 - **AI 应用管理器**：Claude Code / Codex（ChatGPT 桌面版）/ DeepSeek Harness / Ollama / LM Studio / Claude 桌面版的状态、实时任务大卡（阶段/耗时/阻塞/token/确认按钮）、最近完成列表（可展开、按项目/耗时/token 排序）、会话 token 统计、白名单弹窗确认。
 - **响应式工作台**：左右面板可在工具条中开关；宽屏停靠、窄屏改抽屉；网格按可用宽度自动 4/3/2/1 列，避免侧栏覆盖卡片。
 - **系统资源监视**：CPU、内存、交换、磁盘、温度、GPU/显存；页面在后台自动降频。

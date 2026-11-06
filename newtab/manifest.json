@@ -1,13 +1,22 @@
 {
   "manifest_version": 3,
   "name": "可定制新标签页",
-  "version": "1.6.0",
-  "description": "自由设计与编排新标签页小组件：时间、日历、番茄钟、便利贴任务、GitHub 星级榜等，支持响应式布局、拖拽布局、本地目录树与 AI 应用监控",
+  "version": "1.7.0",
+  "description": "自由设计与编排新标签页小组件：时间、日历、番茄钟、便利贴任务、GitHub 星级榜与开发者工作台等，支持响应式布局、拖拽布局、本地目录树与 AI 应用监控",
   "chrome_url_overrides": {
     "newtab": "index.html"
   },
   "permissions": ["storage", "topSites", "bookmarks", "offscreen", "clipboardRead", "clipboardWrite", "tabs", "nativeMessaging", "favicon"],
-  "host_permissions": ["file://*/*", "https://github.com/*", "https://api.github.com/*"],
+  "host_permissions": [
+    "file://*/*",
+    "https://github.com/*",
+    "https://api.github.com/*",
+    "https://raw.githubusercontent.com/*",
+    "https://registry.npmjs.org/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://localhost/*"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"

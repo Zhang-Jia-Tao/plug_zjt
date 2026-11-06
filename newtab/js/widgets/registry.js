@@ -10,6 +10,11 @@ import topSites from './topSites.js';
 import music from './music.js';
 import javaNotes from './javaNotes.js';
 import githubRanking from './githubRanking.js';
+import githubWorkbench from './githubWorkbench.js';
+import aiCost from './aiCost.js';
+import dependencyRadar from './dependencyRadar.js';
+import promptVault from './promptVault.js';
+import devServices from './devServices.js';
 
 export const WIDGETS = [
   timeCalendar,
@@ -18,6 +23,11 @@ export const WIDGETS = [
   search,
   topSites,
   githubRanking,
+  githubWorkbench,
+  aiCost,
+  dependencyRadar,
+  promptVault,
+  devServices,
   music,
   javaNotes,
 ];

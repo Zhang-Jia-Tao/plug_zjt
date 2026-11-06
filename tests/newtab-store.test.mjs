@@ -27,7 +27,7 @@ function makeChrome(initial) {
 test('保存时合并其他窗口的组件和设置，而不是整份旧状态覆盖', async () => {
   const initial = {
     newtab_state: {
-      settings: { schemaVersion: 11, theme: 'light', stickyExtId: '' },
+      settings: { schemaVersion: 12, theme: 'light', stickyExtId: '' },
       widgets: [{ id: 'w-base', key: 'search', size: 'l', data: {} }],
       _revision: 0,
     },
@@ -93,15 +93,20 @@ test('loadState 会把旧 schema 迁移结果整体写回', async () => {
   globalThis.chrome = m.chrome;
   try {
     const loaded = await loadState();
-    assert.equal(loaded.settings.schemaVersion, 11);
+    assert.equal(loaded.settings.schemaVersion, 12);
     assert.ok(loaded.widgets.some(w => w.key === 'focusTimer'));
     assert.ok(loaded.widgets.some(w => w.key === 'javaNotes'));
     assert.ok(loaded.widgets.some(w => w.key === 'githubRanking'));
+    for (const key of ['githubWorkbench', 'aiCost', 'dependencyRadar', 'promptVault', 'devServices']) {
+      assert.ok(loaded.widgets.some(w => w.key === key), `缺少 ${key}`);
+    }
+    assert.equal(loaded.widgets.at(-1).key, 'focusTimer');
     const saved = m.data.newtab_state;
-    assert.equal(saved.settings.schemaVersion, 11);
+    assert.equal(saved.settings.schemaVersion, 12);
     assert.ok(saved.widgets.some(w => w.key === 'focusTimer'));
     assert.ok(saved.widgets.some(w => w.key === 'javaNotes'));
     assert.ok(saved.widgets.some(w => w.key === 'githubRanking'));
+    assert.equal(saved.widgets.at(-1).key, 'focusTimer');
   } finally {
     if (prev === undefined) delete globalThis.chrome;
     else globalThis.chrome = prev;
