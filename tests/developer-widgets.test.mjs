@@ -40,7 +40,7 @@ test('5 个开发者工作组已注册且默认尺寸为 M', () => {
   assert.equal(DEFAULT_STATE.widgets.length, 13);
 });
 
-test('AI 用量：模型定价、会话汇总和成本格式', () => {
+test('AI 成本：人民币定价、会话汇总和成本格式', () => {
   assert.equal(priceFor('claude-sonnet-4').input, 3);
   assert.equal(priceFor('ollama/qwen2.5').input, 0);
   const summary = summarizeSessions([{
@@ -53,11 +53,13 @@ test('AI 用量：模型定价、会话汇总和成本格式', () => {
   }]);
   assert.equal(summary.tokens, 3_000_000);
   assert.equal(summary.turns, 3);
-  assert.equal(summary.cost, 18.3);
+  assert.equal(summary.cost, 131.76);
   assert.equal(summary.models[0].name, 'claude-sonnet-4');
-  assert.equal(formatCost(0.004), '$0.004');
+  assert.equal(formatCost(0.004), '¥0.004');
+  assert.equal(formatCost(131.76), '¥131.76');
   assert.equal(formatTokens(1_200_000), '1.2m');
   assert.equal(aiCost.config[0].key, 'budget');
+  assert.equal(aiCost.defaultData.budget, '100');
 });
 
 test('Prompt 速取：内置模板和默认数据', () => {
@@ -164,4 +166,17 @@ test('样式和注册表包含 5 个新组件', () => {
   assert.equal(manifest.version, '1.7.0');
   assert.ok(manifest.host_permissions.includes('https://raw.githubusercontent.com/*'));
   assert.ok(manifest.host_permissions.includes('https://registry.npmjs.org/*'));
+});
+
+test('设置页有分类导航、组件尺寸控件和人民币预算文案', () => {
+  const html = fs.readFileSync(path.join(root, 'newtab/index.html'), 'utf8');
+  const settingsCss = fs.readFileSync(path.join(root, 'newtab/css/settings.css'), 'utf8');
+  const widgetCss = fs.readFileSync(path.join(root, 'newtab/css/widgets.css'), 'utf8');
+  assert.match(html, /data-settings-tab="appearance"/);
+  assert.match(html, /data-settings-pane="widgets"/);
+  assert.match(html, /id="widget-config-count"/);
+  assert.match(settingsCss, /\.settings-nav\b/);
+  assert.match(settingsCss, /\.wci-size-btn\b/);
+  assert.match(settingsCss, /\.settings-row-switch\b/);
+  assert.match(widgetCss, /\.mini-btn\s*\{[\s\S]*?white-space: nowrap/);
 });

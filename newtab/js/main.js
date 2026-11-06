@@ -213,6 +213,45 @@ function bindPanelLayout() {
 }
 
 // ---- 设置面板 ----
+function activateSettingsTab(name) {
+  const tabs = [...document.querySelectorAll('[data-settings-tab]')];
+  const panes = [...document.querySelectorAll('[data-settings-pane]')];
+  if (!tabs.length) return;
+  const active = tabs.find((tab) => tab.dataset.settingsTab === name) || tabs[0];
+  for (const tab of tabs) {
+    const selected = tab === active;
+    tab.classList.toggle('active', selected);
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  }
+  for (const pane of panes) {
+    const selected = pane.dataset.settingsPane === active.dataset.settingsTab;
+    pane.hidden = !selected;
+    pane.classList.toggle('active', selected);
+  }
+}
+
+function bindSettingsNav() {
+  const tabs = [...document.querySelectorAll('[data-settings-tab]')];
+  if (!tabs.length) return;
+  for (const tab of tabs) {
+    tab.addEventListener('click', () => activateSettingsTab(tab.dataset.settingsTab));
+    tab.addEventListener('keydown', (event) => {
+      const index = tabs.indexOf(tab);
+      let next = -1;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (index + 1) % tabs.length;
+      else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (index - 1 + tabs.length) % tabs.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = tabs.length - 1;
+      if (next < 0) return;
+      event.preventDefault();
+      const target = tabs[next];
+      activateSettingsTab(target.dataset.settingsTab);
+      target.focus({ preventScroll: true });
+    });
+  }
+}
+
 function openSettings() {
   closeOverlayPanels();
   $('#s-theme').value = state.settings.theme;
@@ -222,6 +261,7 @@ function openSettings() {
   $('#s-show-ai').checked = state.settings.showAiPanel !== false;
   syncBgControls();
   renderSettingsPanel();
+  activateSettingsTab('appearance');
   $('#settings').classList.remove('hidden');
   $('#settings').setAttribute('aria-hidden', 'false');
   document.body.classList.add('settings-open');
@@ -245,11 +285,20 @@ function renderSettingsPanel() {
   // 添加小组件：registry 中每个 widget 一个按钮
   const addList = $('#widget-add-list');
   addList.innerHTML = '';
+  const addCount = $('#widget-add-count');
+  if (addCount) addCount.textContent = String(WIDGETS.length);
   for (const def of WIDGETS) {
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'widget-add-btn';
-    btn.textContent = `+ ${def.label}`;
     btn.title = def.description || def.label;
+    btn.innerHTML = `
+      <span class="widget-add-mark" aria-hidden="true">＋</span>
+      <span class="widget-add-copy">
+        <span class="widget-add-name">${escapeAttr(def.label)}</span>
+        <span class="widget-add-desc">${escapeAttr(def.description || '添加到当前布局')}</span>
+      </span>
+    `;
     btn.addEventListener('click', async () => {
       await addWidget(state, def.key, def.defaultData);
       refresh();
@@ -261,6 +310,8 @@ function renderSettingsPanel() {
   // 已有 widget 实例的配置表单
   const configList = $('#widget-config-list');
   configList.innerHTML = '';
+  const configCount = $('#widget-config-count');
+  if (configCount) configCount.textContent = String(state.widgets.length);
   if (state.widgets.length === 0) {
     configList.innerHTML = '<p class="settings-tip">暂无小组件，从上方添加。</p>';
     return;
@@ -272,12 +323,36 @@ function renderSettingsPanel() {
     item.className = 'widget-config-item';
     item.innerHTML = `
       <div class="wci-head">
-        <span>${def.label} · ${w.size.toUpperCase()}</span>
-        <button class="wci-remove" title="删除">✕ 删除</button>
+        <div class="wci-title">
+          <span class="wci-dot" aria-hidden="true"></span>
+          <div class="wci-title-copy">
+            <span class="wci-name">${escapeAttr(def.label)}</span>
+            <span class="wci-meta">${escapeAttr(def.description || '')}</span>
+          </div>
+        </div>
+        <div class="wci-actions">
+          <span class="wci-size" role="group" aria-label="${escapeAttr(def.label)} 尺寸">
+            ${['s', 'm', 'l'].map(size => `
+              <button type="button" class="wci-size-btn${w.size === size ? ' active' : ''}"
+                data-size="${size}" aria-pressed="${w.size === size}" title="${size.toUpperCase()} 尺寸">${size.toUpperCase()}</button>
+            `).join('')}
+          </span>
+          <button type="button" class="wci-remove" title="移除 ${escapeAttr(def.label)}" aria-label="移除 ${escapeAttr(def.label)}">移除</button>
+        </div>
       </div>
       ${buildConfigRows(w, def)}
     `;
-    // 删除按钮
+    // 尺寸切换
+    for (const sizeBtn of item.querySelectorAll('.wci-size-btn')) {
+      sizeBtn.addEventListener('click', async () => {
+        const next = sizeBtn.dataset.size;
+        if (!next || next === w.size) return;
+        await setWidgetSize(state, w.id, next);
+        refresh();
+        renderSettingsPanel();
+      });
+    }
+    // 移除按钮
     item.querySelector('.wci-remove').addEventListener('click', async () => {
       await removeWidget(state, w.id);
       refresh();
@@ -339,6 +414,7 @@ function buildConfigRows(w, def) {
 }
 
 function bindSettings() {
+  bindSettingsNav();
   $('#btn-settings').addEventListener('click', openSettings);
   $('#settings-close').addEventListener('click', closeSettings);
   // 点遮罩关闭

@@ -1,8 +1,11 @@
-// widgets/aiCost.js — AI 用量与预算
+// widgets/aiCost.js — AI 成本与配额
 // 数据来自 AI 管理器的 ai:subscribe 快照；本组件只读展示，不发任何命令。
-// 价格是公开单价的近似值，仅用于同机会话的成本感知，不替代账单。
+// 价格是公开单价的近似值，按参考汇率折算成人民币，仅用于同机会话的成本感知，不替代账单。
 
-const BUDGET_DEFAULT = 20;
+const BUDGET_DEFAULT = 100;
+
+// 公开价目表以美元计价；界面统一按此参考汇率折算为人民币。
+export const USD_TO_CNY = 7.2;
 
 // 每百万 token 的美元参考价（input / cache read / output）。
 // 模型价格会变，这里用于“量级判断”，界面明确标注“估算”。
@@ -35,6 +38,10 @@ function num(value) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+function roundMoney(value) {
+  return Math.round(value * 1e6) / 1e6;
+}
+
 export function summarizeSessions(sessions) {
   const list = Array.isArray(sessions) ? sessions : [];
   const models = new Map();
@@ -50,7 +57,8 @@ export function summarizeSessions(sessions) {
     const o = num(session?.sumOut);
     const model = String(session?.model || session?.app || '未知模型');
     const p = priceFor(`${model} ${session?.app || ''}`);
-    const itemCost = (i / 1e6) * p.input + (c / 1e6) * p.cache + (o / 1e6) * p.output;
+    const itemCostUsd = (i / 1e6) * p.input + (c / 1e6) * p.cache + (o / 1e6) * p.output;
+    const itemCost = itemCostUsd * USD_TO_CNY;
     input += i;
     cache += c;
     output += o;
@@ -59,7 +67,7 @@ export function summarizeSessions(sessions) {
 
     const current = models.get(model) || { name: model, tokens: 0, cost: 0, count: 0, local: p.local };
     current.tokens += i + c + o;
-    current.cost += itemCost;
+    current.cost = roundMoney(current.cost + itemCost);
     current.count += 1;
     models.set(model, current);
   }
@@ -71,7 +79,7 @@ export function summarizeSessions(sessions) {
     output,
     tokens: input + cache + output,
     turns,
-    cost,
+    cost: roundMoney(cost),
     models: [...models.values()].sort((a, b) => b.cost - a.cost || b.tokens - a.tokens),
   };
 }
@@ -85,10 +93,14 @@ export function formatTokens(value) {
 
 export function formatCost(value) {
   const n = Math.max(0, Number(value) || 0);
-  if (n >= 100) return `$${n.toFixed(0)}`;
-  if (n >= 1) return `$${n.toFixed(2)}`;
-  if (n > 0) return `$${n.toFixed(3)}`;
-  return '$0.00';
+  if (n >= 1) return `¥${n.toFixed(2)}`;
+  if (n > 0) return `¥${n.toFixed(3)}`;
+  return '¥0.00';
+}
+
+function formatBudget(value) {
+  const n = Math.max(0, Number(value) || 0);
+  return `¥${n.toFixed(n % 1 ? 1 : 0)}`;
 }
 
 function budgetValue(value) {
@@ -105,16 +117,16 @@ function escapeHtml(value) {
 export default {
   key: 'aiCost',
   label: 'AI 成本与配额',
-  description: '汇总当前 AI 会话的 token、模型与估算费用，辅助控制预算',
-  defaultData: { budget: '20' },
+  description: '汇总当前 AI 会话的 token、模型与人民币估算费用，辅助控制预算',
+  defaultData: { budget: '100' },
   config: [
     {
       key: 'budget',
-      label: '会话预算（USD）',
+      label: '会话预算（人民币）',
       type: 'text',
-      default: '20',
-      placeholder: '20',
-      hint: '按当前监控会话估算；仅用于量级参考，不是账单。',
+      default: '100',
+      placeholder: '100',
+      hint: '按 1 USD ≈ 7.2 CNY 参考汇率估算；仅用于量级参考，不是账单。',
     },
   ],
 
@@ -138,7 +150,7 @@ export default {
           <div class="ac-tokens">-- tokens</div>
         </div>
         <div class="ac-budget">
-          <div class="ac-budget-label"><span>预算</span><b>$20</b></div>
+          <div class="ac-budget-label"><span>预算</span><b>¥100</b></div>
           <div class="ac-bar"><i></i></div>
         </div>
         <div class="mini-list ac-models"></div>
@@ -161,7 +173,8 @@ export default {
     let hostError = '';
 
     const budget = budgetValue(data.budget);
-    budgetLabelEl.textContent = `$${budget.toFixed(budget % 1 ? 2 : 0)}`;
+    budgetLabelEl.textContent = formatBudget(budget);
+    budgetLabelEl.title = '按 1 USD ≈ 7.2 CNY 参考汇率估算';
 
     function setSub(text, title = '') {
       subEl.textContent = text;
@@ -197,9 +210,9 @@ export default {
       tokensEl.textContent = `${formatTokens(summary.tokens)} tokens`;
       barEl.style.width = `${Math.round(ratio * 100)}%`;
       barEl.classList.toggle('over', ratio >= 0.9);
-      budgetLabelEl.textContent = `$${budget.toFixed(budget % 1 ? 2 : 0)}`;
-      setSub(`${summary.count} 个会话 · ${summary.turns} turns`);
-      costEl.title = '按公开单价估算，不是服务商账单';
+      budgetLabelEl.textContent = formatBudget(budget);
+      setSub(`${summary.count} 个会话 · ${summary.turns} turns · 人民币估算`);
+      costEl.title = '按公开单价与 1 USD ≈ 7.2 CNY 参考汇率估算，不是服务商账单';
       tokensEl.title = `输入 ${summary.input.toLocaleString()} · 缓存 ${summary.cache.toLocaleString()} · 输出 ${summary.output.toLocaleString()}`;
 
       const rows = summary.models.slice(0, 3);

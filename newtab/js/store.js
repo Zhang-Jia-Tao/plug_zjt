@@ -43,7 +43,7 @@ export const DEFAULT_STATE = {
     { id: 'w-sites',    key: 'topSites',     size: 'l', data: { showLimit: 10, newTab: false, customSites: [] } },
     { id: 'w-github',   key: 'githubRanking', size: 'm', data: { period: 'day', showLimit: 10 } },
     { id: 'w-github-workbench', key: 'githubWorkbench', size: 'm', data: { tab: 'review' } },
-    { id: 'w-ai-cost',  key: 'aiCost',       size: 'm', data: { budget: '20' } },
+    { id: 'w-ai-cost',  key: 'aiCost',       size: 'm', data: { budget: '100' } },
     { id: 'w-dep-radar', key: 'dependencyRadar', size: 'm', data: { repo: '', branch: 'HEAD' } },
     { id: 'w-prompt-vault', key: 'promptVault', size: 'm', data: {} },
     { id: 'w-dev-services', key: 'devServices', size: 'm', data: { services: [] } },

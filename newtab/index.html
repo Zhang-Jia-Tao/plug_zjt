@@ -151,81 +151,167 @@
   </div>
 
   <!-- 设置面板（覆盖层） -->
-  <div id="settings" class="settings hidden" role="dialog" aria-modal="true" aria-label="设置" aria-hidden="true">
-    <div class="settings-card">
-      <div class="settings-head">
-        <span>设置</span>
-        <button id="settings-close" class="tool-btn" title="关闭" aria-label="关闭设置">✕</button>
-      </div>
-
-      <div class="settings-section">
-        <h4>外观</h4>
-        <label class="settings-row">
-          <span>主题</span>
-          <select id="s-theme">
-            <option value="dark">深色</option>
-            <option value="light">浅色</option>
-          </select>
-        </label>
-        <label class="settings-row">
-          <span>背景色</span>
-          <select id="s-bg-color">
-            <option value="default">默认（跟随主题）</option>
-            <option value="#1a1d24">深空灰</option>
-            <option value="#0f2027">深海蓝</option>
-            <option value="#2d1b3d">暗夜紫</option>
-            <option value="#1d2b1f">森林绿</option>
-            <option value="#f2f4f8">云白</option>
-            <option value="#fdf6ec">米纸色</option>
-            <option value="#e8f0fe">淡天蓝</option>
-            <option value="custom">自定义…</option>
-          </select>
-        </label>
-        <label class="settings-row">
-          <span>自定义颜色</span>
-          <input id="s-bg-custom" type="color" value="#1e2129" />
-        </label>
-      </div>
-
-      <div class="settings-section">
-        <h4>布局</h4>
-        <label class="settings-row">
-          <span>系统资源面板</span>
-          <input id="s-show-sys" type="checkbox" />
-        </label>
-        <label class="settings-row">
-          <span>AI 管理器</span>
-          <input id="s-show-ai" type="checkbox" />
-        </label>
-        <p class="settings-tip">宽屏停靠，窄屏以抽屉打开；关闭后仍可用右上角工具条重新打开。</p>
-      </div>
-
-      <div class="settings-section">
-        <h4>添加小组件</h4>
-        <div id="widget-add-list" class="widget-add-list">
-          <!-- 由 JS 注入：registry 中各 widget 的添加按钮 -->
+  <div id="settings" class="settings hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-hidden="true">
+    <div class="settings-card" role="document">
+      <header class="settings-head">
+        <div class="settings-head-main">
+          <span class="settings-mark" aria-hidden="true">✦</span>
+          <div class="settings-head-copy">
+            <h2 id="settings-title">设置</h2>
+            <p>外观、布局与工作组件</p>
+          </div>
         </div>
-      </div>
+        <button id="settings-close" class="settings-close" title="关闭" aria-label="关闭设置">✕</button>
+      </header>
 
-      <div class="settings-section">
-        <h4>小组件配置</h4>
-        <div id="widget-config-list" class="widget-config-list">
-          <!-- 由 JS 注入：每个已有 widget 实例的配置表单 -->
+      <div class="settings-body">
+        <nav class="settings-nav" role="tablist" aria-label="设置分类" aria-orientation="vertical">
+          <button type="button" class="settings-nav-item active" data-settings-tab="appearance"
+            role="tab" id="settings-tab-appearance" aria-controls="settings-pane-appearance" aria-selected="true">
+            <span class="settings-nav-icon" aria-hidden="true">◐</span><span>外观</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-settings-tab="layout"
+            role="tab" id="settings-tab-layout" aria-controls="settings-pane-layout" aria-selected="false" tabindex="-1">
+            <span class="settings-nav-icon" aria-hidden="true">▥</span><span>布局</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-settings-tab="widgets"
+            role="tab" id="settings-tab-widgets" aria-controls="settings-pane-widgets" aria-selected="false" tabindex="-1">
+            <span class="settings-nav-icon" aria-hidden="true">◫</span><span>组件</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-settings-tab="link"
+            role="tab" id="settings-tab-link" aria-controls="settings-pane-link" aria-selected="false" tabindex="-1">
+            <span class="settings-nav-icon" aria-hidden="true">⇄</span><span>联动</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-settings-tab="reset"
+            role="tab" id="settings-tab-reset" aria-controls="settings-pane-reset" aria-selected="false" tabindex="-1">
+            <span class="settings-nav-icon" aria-hidden="true">↺</span><span>重置</span>
+          </button>
+        </nav>
+
+        <div class="settings-panes">
+          <section class="settings-pane active" id="settings-pane-appearance" data-settings-pane="appearance"
+            role="tabpanel" aria-labelledby="settings-tab-appearance" tabindex="0">
+            <div class="settings-pane-head">
+              <h3>外观</h3>
+              <p>主题和背景会立即应用，无需刷新页面。</p>
+            </div>
+            <div class="settings-panel">
+              <label class="settings-row">
+                <span class="settings-label">主题</span>
+                <select id="s-theme" class="settings-select">
+                  <option value="dark">深色</option>
+                  <option value="light">浅色</option>
+                </select>
+              </label>
+              <label class="settings-row">
+                <span class="settings-label">背景色</span>
+                <select id="s-bg-color" class="settings-select">
+                  <option value="default">默认（跟随主题）</option>
+                  <option value="#1a1d24">深空灰</option>
+                  <option value="#0f2027">深海蓝</option>
+                  <option value="#2d1b3d">暗夜紫</option>
+                  <option value="#1d2b1f">森林绿</option>
+                  <option value="#f2f4f8">云白</option>
+                  <option value="#fdf6ec">米纸色</option>
+                  <option value="#e8f0fe">淡天蓝</option>
+                  <option value="custom">自定义…</option>
+                </select>
+              </label>
+              <label class="settings-row">
+                <span class="settings-label">自定义颜色</span>
+                <input id="s-bg-custom" type="color" value="#1e2129" />
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-pane" id="settings-pane-layout" data-settings-pane="layout"
+            role="tabpanel" aria-labelledby="settings-tab-layout" tabindex="0" hidden>
+            <div class="settings-pane-head">
+              <h3>布局</h3>
+              <p>宽屏停靠，窄屏以抽屉打开；关闭后仍可从右上角工具条重新打开。</p>
+            </div>
+            <div class="settings-panel">
+              <label class="settings-row settings-row-switch">
+                <span class="settings-row-copy">
+                  <span class="settings-label">系统资源面板</span>
+                  <small>CPU、内存、磁盘与温度</small>
+                </span>
+                <input id="s-show-sys" type="checkbox" />
+              </label>
+              <label class="settings-row settings-row-switch">
+                <span class="settings-row-copy">
+                  <span class="settings-label">AI 管理器</span>
+                  <small>会话、任务与 token 监控</small>
+                </span>
+                <input id="s-show-ai" type="checkbox" />
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-pane" id="settings-pane-widgets" data-settings-pane="widgets"
+            role="tabpanel" aria-labelledby="settings-tab-widgets" tabindex="0" hidden>
+            <div class="settings-pane-head">
+              <h3>组件</h3>
+              <p>添加新的工作组件，或调整现有组件的大小和配置。</p>
+            </div>
+            <div class="settings-panel">
+              <div class="settings-panel-head">
+                <div>
+                  <h4>添加小组件</h4>
+                  <p>点击后立即加入当前布局</p>
+                </div>
+                <span id="widget-add-count" class="settings-count">13</span>
+              </div>
+              <div id="widget-add-list" class="widget-add-list">
+                <!-- 由 JS 注入：registry 中各 widget 的添加按钮 -->
+              </div>
+            </div>
+            <div class="settings-panel">
+              <div class="settings-panel-head">
+                <div>
+                  <h4>当前组件</h4>
+                  <p>调整尺寸或移除不再使用的组件</p>
+                </div>
+                <span id="widget-config-count" class="settings-count">0</span>
+              </div>
+              <div id="widget-config-list" class="widget-config-list">
+                <!-- 由 JS 注入：每个已有 widget 实例的配置表单 -->
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-pane" id="settings-pane-link" data-settings-pane="link"
+            role="tabpanel" aria-labelledby="settings-tab-link" tabindex="0" hidden>
+            <div class="settings-pane-head">
+              <h3>便利贴联动</h3>
+              <p>把「程序员便利贴」的规划清单接入任务组件。</p>
+            </div>
+            <div class="settings-panel">
+              <label class="settings-row">
+                <span class="settings-label">便利贴扩展 ID</span>
+                <input id="s-sticky-ext-id" type="text" placeholder="chrome://extensions 中查看" />
+              </label>
+              <p class="settings-tip">填写扩展 ID 后，任务小组件可读取并勾选便利贴的规划清单。本扩展 ID：<code id="s-self-ext-id">—</code></p>
+              <p class="settings-tip">若提示“来源未授权”，请确认便利贴 <code>extension/manifest.json</code> 的 <code>externally_connectable.ids</code> 包含上面的本扩展 ID。</p>
+            </div>
+          </section>
+
+          <section class="settings-pane" id="settings-pane-reset" data-settings-pane="reset"
+            role="tabpanel" aria-labelledby="settings-tab-reset" tabindex="0" hidden>
+            <div class="settings-pane-head">
+              <h3>重置</h3>
+              <p>恢复到初始组件与默认配置。</p>
+            </div>
+            <div class="settings-panel settings-danger-panel">
+              <div class="settings-danger-copy">
+                <h4>恢复默认布局</h4>
+                <p>当前添加的组件、尺寸与配置都会被清空，操作不可撤销。</p>
+              </div>
+              <button id="btn-reset" class="btn btn-danger">恢复默认布局</button>
+            </div>
+            <p class="settings-footnote">所有设置保存在本机 Chrome 存储中，不会上传。</p>
+          </section>
         </div>
-      </div>
-
-      <div class="settings-section">
-        <h4>便利贴联动</h4>
-        <label class="settings-row">
-          <span>便利贴扩展 ID</span>
-          <input id="s-sticky-ext-id" type="text" placeholder="chrome://extensions 中查看" />
-        </label>
-        <p class="settings-tip">填写「程序员便利贴」扩展的 ID 后，任务小组件可读取并勾选便利贴的规划清单。本扩展 ID：<code id="s-self-ext-id">—</code></p>
-        <p class="settings-tip">若提示“来源未授权”，请确认便利贴 <code>extension/manifest.json</code> 的 <code>externally_connectable.ids</code> 包含上面的本扩展 ID。</p>
-      </div>
-
-      <div class="settings-section">
-        <button id="btn-reset" class="btn btn-danger">恢复默认布局</button>
       </div>
     </div>
   </div>
