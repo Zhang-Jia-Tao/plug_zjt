@@ -39,6 +39,7 @@ export default {
   init(container, data, api) {
     // 品牌图标浮出卡片上缘（脱离搜索框组件范围）：该卡片放行 overflow 裁剪
     container.parentElement.classList.add('widget-search');
+    const aiPanelId = `search-ai-panel-${crypto.randomUUID()}`;
     const el = document.createElement('form');
     el.className = 'search-widget';
     el.innerHTML = `
@@ -102,18 +103,18 @@ export default {
         </span>
       </div>
       <div class="search-bar">
-        <span class="search-engine-btn" title="切换搜索引擎">
+        <button type="button" class="search-engine-btn" title="切换搜索引擎" aria-label="切换搜索引擎" aria-haspopup="menu" aria-expanded="false">
           <span class="search-engine-badge fav-wrap" style="--tab-color:${colorFor('google.com')}">
             <span class="fav-letter">${letterFor('google.com')}</span>
             ${faviconImgHtml(ENGINES[0].url, { eager: true })}
           </span>
-        </span>
-        <input type="text" class="search-input" placeholder="搜索或输入网址…" autocomplete="off" />
-        <button type="button" class="search-ai-btn" title="AI 查询入口">
+        </button>
+        <input type="text" class="search-input" placeholder="搜索或输入网址…" autocomplete="off" aria-label="搜索或输入网址" />
+        <button type="button" class="search-ai-btn" title="AI 查询入口" aria-label="打开 AI 查询入口" aria-expanded="false" aria-controls="${aiPanelId}">
           <span class="search-ai-icon">✦</span>
         </button>
       </div>
-      <div class="search-ai-panel hidden">
+      <div class="search-ai-panel hidden" id="${aiPanelId}">
         <div class="ai-panel-list">
           ${AI_PROVIDERS.map(p => `
             <button type="button" class="ai-entry" data-ai="${p.value}">
@@ -134,10 +135,12 @@ export default {
     // 引擎菜单挂 body，fixed 定位（避免被卡片 overflow:hidden 裁剪）
     const menu = document.createElement('div');
     menu.className = 'search-engine-menu hidden';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', '选择搜索引擎');
     menu.innerHTML = ENGINES.map(e => {
       const host = new URL(e.url).hostname;
       return `
-      <button type="button" class="search-engine-option" data-engine="${e.value}">
+      <button type="button" class="search-engine-option" data-engine="${e.value}" role="menuitemradio" aria-checked="false">
         <span class="se-badge fav-wrap" style="--tab-color:${colorFor(host)}">
           <span class="fav-letter">${letterFor(host)}</span>
           ${faviconImgHtml(e.url, { eager: true })}
@@ -164,17 +167,22 @@ export default {
       `;
       wireFavicons(badge);
       engineBtn.title = `当前：${def.label}，点击切换`;
+      menu.querySelectorAll('.search-engine-option').forEach((opt) => {
+        opt.setAttribute('aria-checked', String(opt.dataset.engine === def.value));
+      });
     }
     applyEngineBadge();
 
     const onDocClick = (e) => {
       if (!menu.contains(e.target) && !engineBtn.contains(e.target)) {
         menu.classList.add('hidden');
+        engineBtn.setAttribute('aria-expanded', 'false');
       }
       // 点 widget 外关闭 AI 面板（面板本身在 widget 内，点面板不算外部）
       if (!aiPanel.classList.contains('hidden') && !el.contains(e.target)) {
         aiPanel.classList.add('hidden');
         aiBtn.classList.remove('active');
+        aiBtn.setAttribute('aria-expanded', 'false');
       }
     };
 
@@ -182,10 +190,41 @@ export default {
       e.preventDefault();
       e.stopPropagation();
       const open = menu.classList.toggle('hidden');
-      if (!open) placePopover(menu, engineBtn, { width: 160 });
+      engineBtn.setAttribute('aria-expanded', String(!open));
+      if (!open) {
+        placePopover(menu, engineBtn, { width: 160 });
+        menu.querySelector('.search-engine-option[aria-checked="true"]')?.focus();
+      }
     });
     document.addEventListener('click', onDocClick);
+    // Esc 关闭浮层，回到输入框，不打断键盘操作
+    const onKeydown = (e) => {
+      if (e.key !== 'Escape') return;
+      if (!menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        engineBtn.setAttribute('aria-expanded', 'false');
+        engineBtn.focus();
+      } else if (!aiPanel.classList.contains('hidden')) {
+        aiPanel.classList.add('hidden');
+        aiBtn.classList.remove('active');
+        aiBtn.setAttribute('aria-expanded', 'false');
+        aiBtn.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeydown);
     wireFavicons(menu);
+    menu.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+      const options = [...menu.querySelectorAll('.search-engine-option')];
+      const idx = options.indexOf(document.activeElement);
+      e.preventDefault();
+      if (e.key === 'Home') options[0]?.focus();
+      else if (e.key === 'End') options.at(-1)?.focus();
+      else {
+        const delta = e.key === 'ArrowDown' ? 1 : -1;
+        options[(idx + delta + options.length) % options.length]?.focus();
+      }
+    });
     menu.addEventListener('click', async (e) => {
       const opt = e.target.closest('.search-engine-option');
       if (!opt) return;
@@ -194,6 +233,7 @@ export default {
       data.engine = opt.dataset.engine;
       applyEngineBadge();
       menu.classList.add('hidden');
+      engineBtn.setAttribute('aria-expanded', 'false');
       input.focus();
       if (api?.patchWidget) api.patchWidget({ engine: data.engine });
     });
@@ -204,6 +244,7 @@ export default {
       e.stopPropagation();
       const open = aiPanel.classList.toggle('hidden');
       aiBtn.classList.toggle('active', !open);
+      aiBtn.setAttribute('aria-expanded', String(!open));
       if (!open) input.focus();
     });
 
@@ -236,6 +277,7 @@ export default {
     return () => {
       // 清理：移除 body 挂载的菜单与全局监听
       document.removeEventListener('click', onDocClick);
+      document.removeEventListener('keydown', onKeydown);
       menu.remove();
     };
   },

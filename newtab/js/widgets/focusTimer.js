@@ -34,13 +34,13 @@ export default {
           <circle class="ft-progress" cx="60" cy="60" r="${RING_R}"></circle>
         </svg>
         <div class="ft-center">
-          <div class="ft-time">25:00</div>
+          <div class="ft-time" role="timer" aria-label="剩余专注时间">25:00</div>
           <div class="ft-label">专注</div>
         </div>
       </div>
       <div class="ft-actions">
-        <button type="button" class="ft-btn ft-primary ft-toggle">开始</button>
-        <button type="button" class="ft-btn ft-reset">重置</button>
+        <button type="button" class="ft-btn ft-primary ft-toggle" aria-label="开始专注">开始</button>
+        <button type="button" class="ft-btn ft-reset" aria-label="重置番茄钟">重置</button>
       </div>
     `;
     container.appendChild(el);
@@ -90,6 +90,8 @@ export default {
       toggleBtn.textContent = running
         ? '暂停'
         : (remaining <= 0 ? '再来一次' : (remaining < totalMs ? '继续' : '开始'));
+      toggleBtn.setAttribute('aria-label', `${toggleBtn.textContent}番茄钟`);
+      el.dataset.state = running ? 'running' : (remaining <= 0 ? 'done' : (remaining < totalMs ? 'paused' : 'idle'));
       el.classList.toggle('running', running);
       el.classList.toggle('done', !running && remaining <= 0);
     }

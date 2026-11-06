@@ -238,9 +238,11 @@ export default {
     function render() {
       const s = current;
       const p = primaryView();
+      el.dataset.state = s?.state || 'unknown';
       refs.primary.textContent = p.label;
       refs.primary.disabled = p.disabled;
       refs.primary.className = `jn-primary${p.cls ? ' ' + p.cls : ''}`;
+      refs.primary.setAttribute('aria-busy', p.cls === 'busy' ? 'true' : 'false');
       refs.detail.textContent = detailText();
       refs.detail.title = detailText();
 

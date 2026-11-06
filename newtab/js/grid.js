@@ -5,6 +5,40 @@
 import { WIDGETS } from './widgets/registry.js';
 
 const SIZE_CYCLE = ['s', 'm', 'l'];
+let spotlightBound = false;
+
+// 卡片指针柔光：只写 CSS 变量，交给合成层绘制，避免每帧改布局
+function bindWidgetSpotlight(grid) {
+  if (spotlightBound) return;
+  spotlightBound = true;
+  let raf = 0;
+  let card = null;
+  let x = 0;
+  let y = 0;
+  grid.addEventListener('pointermove', (e) => {
+    card = e.target.closest('.widget');
+    if (!card) return;
+    x = e.clientX;
+    y = e.clientY;
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      if (!card) return;
+      const r = card.getBoundingClientRect();
+      card.style.setProperty('--mx', `${x - r.left}px`);
+      card.style.setProperty('--my', `${y - r.top}px`);
+    });
+  });
+  grid.addEventListener('pointerleave', () => {
+    card = null;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    grid.querySelectorAll('.widget').forEach((el) => {
+      el.style.removeProperty('--mx');
+      el.style.removeProperty('--my');
+    });
+  });
+}
 
 // 渲染整个网格：为每个 widget 实例建卡片并调 widget.init(container, data, api)
 // handlers: { onReorder(ids), onResize(id, size), onRemove(id) }（编辑模式操作回调）
@@ -15,6 +49,7 @@ export function renderGrid(state, handlers) {
     destroyWidget(el);
   }
   grid.innerHTML = '';
+  bindWidgetSpotlight(grid);
 
   if (state.widgets.length === 0) {
     grid.innerHTML = '<div class="grid-empty">暂无小组件，点右上角 ⚙ 添加</div>';

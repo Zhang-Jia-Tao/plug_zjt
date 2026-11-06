@@ -154,9 +154,9 @@ export default {
               </div>
             </div>
             <div class="music-controls">
-              <button class="music-btn" data-act="prev" title="上一首">⏮</button>
-              <button class="music-btn music-play" data-act="play" title="播放/暂停">▶</button>
-              <button class="music-btn" data-act="next" title="下一首">⏭</button>
+              <button class="music-btn" data-act="prev" title="上一首" aria-label="上一首">⏮</button>
+              <button class="music-btn music-play" data-act="play" title="播放/暂停" aria-label="播放">▶</button>
+              <button class="music-btn" data-act="next" title="下一首" aria-label="下一首">⏭</button>
             </div>
             <div class="music-progress">
               <span class="music-time-cur">0:00</span>
@@ -335,7 +335,10 @@ export default {
 
     function updatePlayBtn() {
       const btn = el.querySelector('.music-play');
-      if (btn && audio) btn.textContent = audio.paused ? '▶' : '⏸';
+      if (!btn || !audio) return;
+      btn.textContent = audio.paused ? '▶' : '⏸';
+      btn.setAttribute('aria-label', audio.paused ? '播放' : '暂停');
+      btn.title = audio.paused ? '播放' : '暂停';
     }
 
     // ---- 播放控制 ----

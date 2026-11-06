@@ -24,18 +24,39 @@ export default {
     el.className = 'sticky-tasks';
     el.innerHTML = `
       <div class="st-head">
-        <span class="st-title">便利贴任务</span>
+        <div class="st-head-main">
+          <span class="st-head-icon" aria-hidden="true">✓</span>
+          <span class="st-title">便利贴任务</span>
+          <span class="st-count" aria-live="polite"></span>
+        </div>
         <button class="st-refresh" type="button" title="刷新便利贴任务" aria-label="刷新便利贴任务">⟳</button>
       </div>
+      <div class="st-progress" aria-hidden="true"><i></i></div>
       <div class="st-body"><div class="st-empty">正在读取便利贴任务…</div></div>
     `;
     container.appendChild(el);
     const body = el.querySelector('.st-body');
+    const countEl = el.querySelector('.st-count');
+    const progressEl = el.querySelector('.st-progress i');
 
     let destroyed = false;
     let rendering = false;
 
+    function setStats(done = 0, total = 0) {
+      if (!total) {
+        countEl.textContent = '';
+        countEl.removeAttribute('title');
+        progressEl.style.width = '0%';
+        return;
+      }
+      const pct = Math.round((done / total) * 100);
+      countEl.textContent = `${done}/${total}`;
+      countEl.title = `已完成 ${done} / 共 ${total} 项（${pct}%）`;
+      progressEl.style.width = `${pct}%`;
+    }
+
     function status(html) {
+      setStats();
       body.innerHTML = `<div class="st-empty">${html}</div>`;
     }
 
@@ -53,6 +74,7 @@ export default {
       rendering = false;
       if (destroyed) return;
       if (!r.ok) {
+        setStats();
         body.innerHTML = `
           <div class="st-error">未连接便利贴扩展：${escapeHtml(r.message)}</div>
           <button class="st-link st-retry" type="button">重试</button>
@@ -71,12 +93,14 @@ export default {
         status('便利贴中暂无规划清单任务');
         return;
       }
+      // 统计基于全部任务，而不是当前显示上限
+      setStats(items.filter(t => t.done).length, items.length);
       const limit = +data.showLimit || 0;
       if (limit > 0) items = items.slice(0, limit);
       body.innerHTML = items.map(t => `
         <label class="st-task ${t.done ? 'done' : ''}">
           <input type="checkbox" data-note="${t.noteId}" data-task="${t.taskId}" ${t.done ? 'checked' : ''} />
-          <span class="st-text">${escapeHtml(t.text)}</span>
+          <span class="st-text" title="${escapeHtml(t.text)}">${escapeHtml(t.text)}</span>
         </label>
       `).join('');
     }
