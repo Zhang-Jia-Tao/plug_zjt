@@ -207,16 +207,17 @@ export default {
 
     function primaryView() {
       const s = current;
-      const hostOffline = !!hostError;
       if (!s) return { label: '启动并学习', cls: '', disabled: false };
       if (s.state === 'starting' || s.state === 'stopping') {
         return { label: s.state === 'stopping' ? '停止中…' : '启动中…', cls: 'busy', disabled: true };
       }
       if (s.state === 'running_full') return { label: '打开学习', cls: 'ready', disabled: false };
-      if (s.state === 'running_site_only') return { label: '补启批注', cls: 'warn', disabled: hostOffline };
-      if (s.state === 'port_conflict') return { label: '端口被占用', cls: 'danger', disabled: true };
-      if (s.state === 'error') return { label: '重试', cls: 'warn', disabled: hostOffline };
-      return { label: '启动并学习', cls: '', disabled: hostOffline };
+      if (s.state === 'running_site_only') return { label: '补启批注', cls: 'warn', disabled: false };
+      // 端口冲突/host 离线时不要用 disabled 按钮“静默”：点击后给出具体原因，
+      // 否则用户看到的就是“点了完全没反应”。真正启动/停止中才禁用。
+      if (s.state === 'port_conflict') return { label: '端口被占用', cls: 'danger', disabled: false };
+      if (s.state === 'error') return { label: '重试', cls: 'warn', disabled: false };
+      return { label: '启动并学习', cls: '', disabled: false };
     }
 
     function detailText() {
@@ -326,10 +327,21 @@ export default {
 
     // ---- 与 host 的命令通道 ----
     function sendWatch(watch) {
-      if (!port) return;
+      const message = { action: 'project:watch', watch, root: projectRoot };
+      // 先用一次性消息唤醒 SW；长连接端口只负责接收推送，不承担上行。
+      // 老版本后台不认 project:watch 时，再退回端口发送。
       try {
-        port.postMessage({ action: 'project:watch', watch, root: projectRoot });
-      } catch { /* 端口刚断开，重连后再补发 */ }
+        chrome.runtime.sendMessage(message, () => {
+          const err = chrome.runtime.lastError;
+          if (err && port) {
+            try { port.postMessage(message); } catch {}
+          }
+        });
+      } catch {
+        if (port) {
+          try { port.postMessage(message); } catch {}
+        }
+      }
     }
 
     function connect() {
@@ -403,22 +415,49 @@ export default {
     }
 
     function command(name, payload = {}) {
-      if (!port) return Promise.reject(new Error('host 未连接'));
       const requestId = (crypto?.randomUUID?.())
         || `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const timeout = COMMAND_TIMEOUT[name] || 20_000;
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          pending.delete(requestId);
-          reject(new Error('host 响应超时'));
-        }, timeout);
-        pending.set(requestId, { resolve, reject, timer });
-        try {
-          port.postMessage({ action: 'project:command', requestId, root: projectRoot, command: name, payload });
-        } catch (e) {
-          pending.delete(requestId);
+        let settled = false;
+        const finish = (fn, value) => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timer);
-          reject(new Error(String(e?.message || e)));
+          fn(value);
+        };
+        const timer = setTimeout(() => {
+          finish(reject, new Error('host 响应超时'));
+        }, timeout);
+        // 用一次性消息而不是页面长连接：SW 被回收/页面端口半死时，
+        // sendMessage 仍能唤醒 SW 并把命令转给 host。
+        try {
+          chrome.runtime.sendMessage({
+            action: 'project:command',
+            requestId,
+            root: projectRoot,
+            command: name,
+            payload,
+          }, (resp) => {
+            const err = chrome.runtime.lastError;
+            if (err) {
+              finish(reject, new Error(err.message || '扩展后台不可用，请重新加载扩展'));
+              return;
+            }
+            if (!resp) {
+              finish(reject, new Error('扩展后台未响应，请重新加载扩展'));
+              return;
+            }
+            if (resp.ok) finish(resolve, resp);
+            else {
+              finish(reject, Object.assign(new Error(resp.error?.message || '操作失败'), {
+                code: resp.error?.code || 'project_command_failed',
+                detail: resp.error?.detail || '',
+              }));
+            }
+          });
+        } catch (e) {
+          finish(reject, new Error(String(e?.message || e)));
         }
       });
     }
@@ -426,9 +465,12 @@ export default {
     function startAndMaybeOpen(route = '/') {
       if (current?.state === 'starting' || current?.state === 'stopping') return;
       openWhenSiteReady = route;
+      // 立刻给点击反馈；host 正常会很快推 starting/结果，applyState 会清掉提示。
+      setUiError('正在请求 host 启动…');
       command('start', { withAnno: true })
         .then((res) => {
           if (res?.state) applyState(res.state);
+          else render();
           if (res?.state?.site?.ok && !res.state.site.foreign && openWhenSiteReady) {
             const target = openWhenSiteReady;
             openWhenSiteReady = '';
@@ -455,7 +497,11 @@ export default {
         return;
       }
       if (s.state === 'port_conflict') {
-        setUiError('4321 被其他程序占用，未自动清理端口');
+        setUiError(`端口 ${s.site?.port || 4321} 被其他程序占用；请先停止旧目录服务或释放端口`);
+        return;
+      }
+      if (hostError && !port) {
+        setUiError('host 未连接，请重启扩展/浏览器后再试');
         return;
       }
       startAndMaybeOpen('/');

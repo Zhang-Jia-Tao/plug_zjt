@@ -133,11 +133,17 @@ test('扩展接线：widget 注册、默认布局、命令转发', () => {
   assert.match(store, /SCHEMA_VERSION = 10/);
   assert.match(background, /forwardProjectCommand/);
   assert.match(background, /type: 'project:command'/);
+  assert.match(background, /forwardProjectMessage/);
+  assert.match(background, /projectWaiters/);
+  assert.match(background, /settleProjectWaiter/);
   assert.ok(fs.existsSync(path.join(root, 'newtab/js/widgets/javaNotes.js')));
   assert.ok(fs.existsSync(path.join(root, 'newtab/css/widgets.css')));
   const widget = fs.readFileSync(path.join(root, 'newtab/js/widgets/javaNotes.js'), 'utf8');
   const main = fs.readFileSync(path.join(root, 'newtab/js/main.js'), 'utf8');
   assert.match(widget, /key: 'root'[\s\S]*?type: 'text'/);
   assert.match(widget, /root: projectRoot/);
+  assert.match(widget, /chrome\.runtime\.sendMessage\(\{[\s\S]{0,200}action: 'project:command'/);
+  assert.match(widget, /正在请求 host 启动/);
+  assert.match(widget, /port_conflict'\) return \{ label: '端口被占用'[\s\S]{0,80}disabled: false/);
   assert.match(main, /c\.type === 'text'/);
 });

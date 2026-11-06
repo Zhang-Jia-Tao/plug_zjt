@@ -16,6 +16,10 @@ let aiPort = null;
 const aiSubscribers = new Set(); // 页面 port（onDisconnect 自动摘除）
 let projectRoot = ''; // 组件配置的 Java 终极笔记启动目录；host 重启后用它恢复
 let noSubscriberTimer = null; // 全部页面断开后延迟降频，避免刷新页面时 false 晚于新订阅的 true
+// 页面用 chrome.runtime.sendMessage 发项目命令时，在这里等 host 的 project:result。
+// 这样即使页面到 SW 的长连接端口处于半死状态（能收推送、发不出命令），命令也能
+// 通过一次性消息唤醒 SW 并转发，避免“点启动一直无反应/超时”。
+const projectWaiters = new Map();
 
 chrome.runtime.onConnect.addListener((pagePort) => {
   if (pagePort.name !== 'ai:subscribe') return;
@@ -78,7 +82,74 @@ function ensureAiPort() {
   return aiPort;
 }
 
+function settleProjectWaiter(msg) {
+  if (!msg || msg.type !== 'project:result' || !msg.requestId) return;
+  const waiter = projectWaiters.get(msg.requestId);
+  if (!waiter) return;
+  projectWaiters.delete(msg.requestId);
+  clearTimeout(waiter.timer);
+  try { waiter.sendResponse(msg); } catch { /* 页面已关闭 */ }
+}
+
+function forwardProjectMessage(msg, sendResponse) {
+  if (!msg || typeof msg !== 'object') return false;
+  if (msg.action === 'project:watch') {
+    if (typeof msg.root === 'string') projectRoot = msg.root.trim();
+    const p = ensureAiPort();
+    if (p) {
+      try { p.postMessage({ type: 'project:watch', watch: msg.watch !== false, root: projectRoot }); } catch {}
+    }
+    try { sendResponse({ ok: !!p }); } catch {}
+    return false;
+  }
+  if (msg.action !== 'project:command') return false;
+  if (typeof msg.root === 'string') projectRoot = msg.root.trim();
+  const requestId = msg.requestId;
+  const port = ensureAiPort();
+  if (!port) {
+    try {
+      sendResponse({
+        ok: false,
+        error: { code: 'host_offline', message: 'host 未连接（是否已运行 install-host.bat？）' },
+      });
+    } catch {}
+    return false;
+  }
+  const timer = setTimeout(() => {
+    if (!projectWaiters.delete(requestId)) return;
+    try {
+      sendResponse({
+        ok: false,
+        error: { code: 'host_timeout', message: 'host 响应超时（后台已重连，请重试）' },
+      });
+    } catch {}
+    // host 可能已经被 Chrome 回收但端口对象还在，主动断掉让 onDisconnect 重连。
+    try { aiPort?.disconnect(); } catch {}
+  }, 60_000);
+  projectWaiters.set(requestId, { sendResponse, timer });
+  try {
+    port.postMessage({
+      type: 'project:command',
+      requestId,
+      root: projectRoot,
+      command: String(msg.command || ''),
+      payload: msg.payload && typeof msg.payload === 'object' ? msg.payload : {},
+    });
+  } catch (e) {
+    projectWaiters.delete(requestId);
+    clearTimeout(timer);
+    try {
+      sendResponse({
+        ok: false,
+        error: { code: 'host_send_failed', message: String(e && e.message || e) },
+      });
+    } catch {}
+  }
+  return true;
+}
+
 function broadcastAi(msg) {
+  settleProjectWaiter(msg);
   for (const sub of aiSubscribers) {
     try { sub.postMessage({ action: 'ai:event', payload: msg }); } catch { /* 页面已关 */ }
   }
@@ -370,9 +441,19 @@ function handleAiMessage(msg, sender, sendResponse) {
 }
 
 // ---- 消息路由 ----
+// 项目命令/监控走一次性消息：唤醒 SW 即可，不依赖页面长连接端口的上行是否健康。
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && (msg.action === 'project:command' || msg.action === 'project:watch')) {
+    return forwardProjectMessage(msg, sendResponse);
+  }
+  return false;
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
+      // 项目命令由上面的专用 listener 处理，这里不响应，避免提前关闭消息通道。
+      if (msg && (msg.action === 'project:command' || msg.action === 'project:watch')) return;
       // AI 管理器消息优先单独处理
       if (msg && String(msg.action || '').startsWith('ai:')) {
         handleAiMessage(msg, sender, sendResponse);
