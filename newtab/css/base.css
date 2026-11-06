@@ -243,6 +243,84 @@ body.editing .widget .widget-tools { display: flex; }
 .tool-btn svg { width: 16px; height: 16px; display: block; }
 .tool-btn:hover { background: var(--card-hover); color: var(--text); transform: translateY(-1px); }
 .tool-btn.active { background: var(--grad-brand); color: #fff; }
+
+/* 下滑时把系统资源 / AI 两个面板图标收进设置按钮下方的菜单，减少工具条占地 */
+.tool-settings { position: relative; display: flex; align-items: center; }
+.tool-more-toggle {
+  display: none;
+  width: 16px;
+  height: 34px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.18s var(--ease), color 0.18s var(--ease);
+}
+.tool-more-toggle svg { width: 12px; height: 12px; display: block; }
+.tool-more-toggle:hover,
+.tool-more-toggle[aria-expanded="true"] { background: var(--card-hover); color: var(--text); }
+.toolbar.is-compact > #btn-sys,
+.toolbar.is-compact > #btn-ai,
+.toolbar.is-compact > .tool-sep { display: none; }
+.toolbar.is-compact .tool-more-toggle { display: flex; }
+
+.tool-more-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 2;
+  width: 164px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow-lift), var(--edge);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  animation: tool-menu-in 0.16s var(--ease);
+}
+@keyframes tool-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.tool-more-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.16s var(--ease), color 0.16s var(--ease);
+}
+.tool-more-item svg { width: 15px; height: 15px; flex: 0 0 15px; }
+.tool-more-item:hover { background: var(--card-hover); color: var(--text); }
+.tool-more-item[aria-checked="true"] {
+  background: color-mix(in srgb, var(--primary) 12%, var(--card-hover));
+  color: var(--text);
+}
+.tool-more-item[aria-checked="true"] svg { color: var(--primary); }
+.tool-more-toggle:focus-visible,
+.tool-more-item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 .tool-sep {
   width: 1px;
   align-self: stretch;

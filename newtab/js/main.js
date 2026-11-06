@@ -212,6 +212,108 @@ function bindPanelLayout() {
   window.addEventListener('resize', applyPanelLayout);
 }
 
+// ---- 右上角工具条：下滑时收拢面板图标 ----
+function bindToolbar() {
+  const toolbar = document.querySelector('.toolbar');
+  const trigger = $('#btn-tool-more');
+  const menu = $('#tool-more-menu');
+  if (!toolbar || !trigger || !menu) return;
+
+  const panelButtons = { sys: $('#btn-sys'), ai: $('#btn-ai') };
+  const items = [...menu.querySelectorAll('[data-panel]')];
+
+  function syncMenuState() {
+    for (const item of items) {
+      const key = item.dataset.panel;
+      const on = document.body.classList.contains(`${key}-panel-on`);
+      item.setAttribute('aria-checked', String(on));
+    }
+  }
+
+  function closeMenu(focusTrigger = false) {
+    const wasOpen = !menu.classList.contains('hidden');
+    menu.classList.add('hidden');
+    trigger.setAttribute('aria-expanded', 'false');
+    if (focusTrigger && wasOpen) trigger.focus({ preventScroll: true });
+  }
+
+  function openMenu() {
+    syncMenuState();
+    menu.classList.remove('hidden');
+    trigger.setAttribute('aria-expanded', 'true');
+    (items.find((item) => item.getAttribute('aria-checked') === 'true') || items[0])
+      ?.focus({ preventScroll: true });
+  }
+
+  trigger.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (menu.classList.contains('hidden')) openMenu();
+    else closeMenu(true);
+  });
+
+  for (const item of items) {
+    item.addEventListener('click', () => {
+      panelButtons[item.dataset.panel]?.click();
+      syncMenuState();
+      closeMenu(true);
+    });
+  }
+
+  menu.addEventListener('keydown', (event) => {
+    const index = items.indexOf(document.activeElement);
+    let next = -1;
+    if (event.key === 'ArrowDown') next = (index + 1) % items.length;
+    else if (event.key === 'ArrowUp') next = (index - 1 + items.length) % items.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = items.length - 1;
+    else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeMenu(true);
+      return;
+    } else if (event.key === 'Tab') {
+      closeMenu();
+      return;
+    }
+    if (next < 0) return;
+    event.preventDefault();
+    items[next].focus({ preventScroll: true });
+  });
+
+  document.addEventListener('click', (event) => {
+    if (menu.classList.contains('hidden')) return;
+    if (menu.contains(event.target) || trigger.contains(event.target)) return;
+    closeMenu();
+  });
+
+  // 面板打开状态由 applyPanelLayout 写入 body class，菜单勾选状态随之同步
+  new MutationObserver(syncMenuState).observe(document.body, {
+    attributes: true,
+    attributeFilter: ['class'],
+  });
+
+  let ticking = false;
+
+  function setCompact(compact) {
+    if (toolbar.classList.contains('is-compact') === compact) return;
+    toolbar.classList.toggle('is-compact', compact);
+    closeMenu();
+  }
+
+  function updateToolbar() {
+    // 离开顶部后保持收拢，避免回看内容时工具条重新挡住卡片；回顶恢复完整工具条
+    setCompact(Math.max(0, window.scrollY || 0) > 48);
+    ticking = false;
+  }
+
+  window.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(updateToolbar);
+  }, { passive: true });
+
+  updateToolbar();
+}
+
 // ---- 设置面板 ----
 function activateSettingsTab(name) {
   const tabs = [...document.querySelectorAll('[data-settings-tab]')];
@@ -509,6 +611,7 @@ async function init() {
   bindEditMode();
   bindPanelLayout();
   bindSettings();
+  bindToolbar();
   bindTreeSidebar();
   initBookmarkBar();
   applyPanelLayout();
