@@ -168,6 +168,16 @@ test('样式和注册表包含 5 个新组件', () => {
   assert.ok(manifest.host_permissions.includes('https://registry.npmjs.org/*'));
 });
 
+test('新标签页打开时不因 GitHub 工作台 Token 输入框抢焦点', () => {
+  const workbench = fs.readFileSync(path.join(root, 'newtab/js/widgets/githubWorkbench.js'), 'utf8');
+  const main = fs.readFileSync(path.join(root, 'newtab/js/main.js'), 'utf8');
+  assert.match(workbench, /openSetup\(\{ firstRun: true, focus: false \}\)/);
+  assert.match(workbench, /if \(focus && inputEl\) inputEl\.focus\(\)/);
+  assert.match(main, /function focusSearchOnOpen\(/);
+  assert.match(main, /requestAnimationFrame\(\(\) => requestAnimationFrame\(focusSearchOnOpen\)\)/);
+  assert.match(main, /querySelector\('\.search-input'\)/);
+});
+
 test('设置页有分类导航、组件尺寸控件和人民币预算文案', () => {
   const html = fs.readFileSync(path.join(root, 'newtab/index.html'), 'utf8');
   const settingsCss = fs.readFileSync(path.join(root, 'newtab/css/settings.css'), 'utf8');

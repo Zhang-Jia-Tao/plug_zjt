@@ -604,6 +604,19 @@ function bindTreeSidebar() {
   });
 }
 
+// 新标签页打开时把视口和键盘焦点交给搜索框。
+// 浏览器/组件初始化可能把焦点落到某个输入框上，导致页面自动滚到下方组件；
+// 这里在首帧后用 preventScroll 聚焦搜索框，再把搜索组件滚到最近可见位置。
+function focusSearchOnOpen() {
+  if (document.visibilityState === 'hidden') return;
+  const input = document.querySelector('.search-input');
+  if (!input) return;
+  input.focus({ preventScroll: true });
+  const widget = input.closest('.widget');
+  if (widget) widget.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+  else window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+}
+
 // ---- 入口 ----
 async function init() {
   state = await loadState();
@@ -616,6 +629,8 @@ async function init() {
   bindTreeSidebar();
   initBookmarkBar();
   applyPanelLayout();
+  // 双重 RAF：等组件完成首轮布局/异步默认配置展开后再定位。
+  requestAnimationFrame(() => requestAnimationFrame(focusSearchOnOpen));
 }
 
 init();

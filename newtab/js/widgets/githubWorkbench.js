@@ -538,7 +538,7 @@ export default {
       setHidden(setupMsgEl, !message);
     }
 
-    function openSetup({ firstRun = false, message = '' } = {}) {
+    function openSetup({ firstRun = false, message = '', focus = true } = {}) {
       setHidden(setupEl, false);
       setHidden(mainEl, true);
       setHidden(actionsEl, true);
@@ -548,7 +548,10 @@ export default {
       setSetupMessage(message, !!message);
       subEl.textContent = firstRun && !token ? '连接 GitHub 账号' : '账号与 Token';
       subEl.title = '';
-      if (inputEl) inputEl.focus();
+      // 首次启动自动展开配置表单时不能抢焦点：否则新标签页会滚到
+      // GitHub 工作台，把搜索框挤出视口。只有用户主动点“账号与 Token”
+      // 或提交校验失败时才聚焦 Token 输入框。
+      if (focus && inputEl) inputEl.focus();
     }
 
     function setSetupBusy(value) {
@@ -852,7 +855,7 @@ export default {
       if (destroyed) return;
       if (!token) {
         setBusy(false);
-        openSetup({ firstRun: true });
+        openSetup({ firstRun: true, focus: false });
         return;
       }
       showMain();
