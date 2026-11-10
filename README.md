@@ -69,7 +69,7 @@ Native Messaging 注册表（无需管理员）。版本库里的 `com.zjt.ai_ma
 - **依赖与漏洞雷达**：读取公开 GitHub 仓库的直接 npm 依赖，通过 npm 安全公告批量接口检查已知漏洞。
 - **Prompt 速取**：本地 Prompt / 代码片段 / 命令库，点击复制，支持新增、编辑、删除。
 - **开发服务台**：探测本地 Vite、Java 学习台、Ollama 等 http://localhost 服务的状态与延迟，只读探测、不执行启停。
-> GitHub 工作台需要自备只读 Personal Access Token（单独保存在 `chrome.storage.local`，不写入组件状态）；依赖雷达仅扫描公开 GitHub 仓库的直接 npm 依赖；开发服务台仅做健康探测，不执行启停。
+> GitHub 工作台需要自备只读 Personal Access Token（单独保存在 `chrome.storage.local`，不写入组件状态）；依赖雷达仅扫描公开 GitHub 仓库的直接 npm 依赖；开发服务台仅做健康探测，不执行启停。Java 学习台的「启动目录」填项目根目录（直接含 `start.ps1` 与 `site/package.json`）；留空会自动探测，显式目录失效时默认自动改用探测到的目录，也可在组件里关闭自动备用。
 - **AI 应用管理器**：Claude Code / Codex（ChatGPT 桌面版）/ DeepSeek Harness / Ollama / LM Studio / Claude 桌面版的状态、实时任务大卡（阶段/耗时/阻塞/token/确认按钮）、最近完成列表（可展开、按项目/耗时/token 排序）、会话 token 统计、白名单弹窗确认。
 - **响应式工作台**：左右面板可在工具条中开关；向下滚动后两个面板入口自动收进设置下方的菜单，回到顶部恢复，减少工具条对内容的遮挡；宽屏停靠、窄屏改抽屉；网格按可用宽度自动 4/3/2/1 列，避免侧栏覆盖卡片。
 - **系统资源监视**：CPU、内存、交换、磁盘、温度、GPU/显存；页面在后台自动降频。

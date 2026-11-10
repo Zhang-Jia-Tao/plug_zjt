@@ -49,7 +49,7 @@ export const DEFAULT_STATE = {
     { id: 'w-dev-services', key: 'devServices', size: 'm', data: { services: [] } },
     { id: 'w-tasks',    key: 'stickyTasks',  size: 'm', data: { showLimit: 10 } },
     { id: 'w-music',    key: 'music',        size: 'm', data: { dirId: '', volume: 0.8, loopMode: 'off', shuffle: false } },
-    { id: 'w-java-notes', key: 'javaNotes',  size: 'm', data: { root: '' } },
+    { id: 'w-java-notes', key: 'javaNotes',  size: 'm', data: { root: '', autoFallback: true } },
     { id: 'w-focus',    key: 'focusTimer',   size: 'm', data: { minutes: 25, endAt: 0, remainingMs: 25 * 60 * 1000, running: false } },
   ],
 };

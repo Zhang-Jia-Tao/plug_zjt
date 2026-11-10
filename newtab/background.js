@@ -15,6 +15,7 @@ import { matchWebAiSite, webAiSiteById } from './js/webai-sites.js';
 let aiPort = null;
 const aiSubscribers = new Set(); // 页面 port（onDisconnect 自动摘除）
 let projectRoot = ''; // 组件配置的 Java 终极笔记启动目录；host 重启后用它恢复
+let projectAutoFallback = true; // 显式目录失效时是否允许 host 自动探测备用目录
 let noSubscriberTimer = null; // 全部页面断开后延迟降频，避免刷新页面时 false 晚于新订阅的 true
 // 页面用 chrome.runtime.sendMessage 发项目命令时，在这里等 host 的 project:result。
 // 这样即使页面到 SW 的长连接端口处于半死状态（能收推送、发不出命令），命令也能
@@ -77,7 +78,14 @@ function ensureAiPort() {
   // 学习台停在旧快照上。
   if (aiSubscribers.size > 0) {
     try { aiPort.postMessage({ type: 'query' }); } catch {}
-    try { aiPort.postMessage({ type: 'project:watch', watch: true, root: projectRoot }); } catch {}
+    try {
+      aiPort.postMessage({
+        type: 'project:watch',
+        watch: true,
+        root: projectRoot,
+        autoFallback: projectAutoFallback,
+      });
+    } catch {}
   }
   return aiPort;
 }
@@ -95,15 +103,24 @@ function forwardProjectMessage(msg, sendResponse) {
   if (!msg || typeof msg !== 'object') return false;
   if (msg.action === 'project:watch') {
     if (typeof msg.root === 'string') projectRoot = msg.root.trim();
+    if (typeof msg.autoFallback === 'boolean') projectAutoFallback = msg.autoFallback;
     const p = ensureAiPort();
     if (p) {
-      try { p.postMessage({ type: 'project:watch', watch: msg.watch !== false, root: projectRoot }); } catch {}
+      try {
+        p.postMessage({
+          type: 'project:watch',
+          watch: msg.watch !== false,
+          root: projectRoot,
+          autoFallback: projectAutoFallback,
+        });
+      } catch {}
     }
     try { sendResponse({ ok: !!p }); } catch {}
     return false;
   }
   if (msg.action !== 'project:command') return false;
   if (typeof msg.root === 'string') projectRoot = msg.root.trim();
+  if (typeof msg.autoFallback === 'boolean') projectAutoFallback = msg.autoFallback;
   const requestId = msg.requestId;
   const port = ensureAiPort();
   if (!port) {
@@ -132,6 +149,7 @@ function forwardProjectMessage(msg, sendResponse) {
       type: 'project:command',
       requestId,
       root: projectRoot,
+      autoFallback: projectAutoFallback,
       command: String(msg.command || ''),
       payload: msg.payload && typeof msg.payload === 'object' ? msg.payload : {},
     });
@@ -161,15 +179,22 @@ function forwardProjectCommand(pagePort, msg) {
   if (!msg) return;
   if (msg.action === 'project:watch') {
     if (typeof msg.root === 'string') projectRoot = msg.root.trim();
+    if (typeof msg.autoFallback === 'boolean') projectAutoFallback = msg.autoFallback;
     const p = ensureAiPort();
     if (!p) return;
     try {
-      p.postMessage({ type: 'project:watch', watch: msg.watch !== false, root: projectRoot });
+      p.postMessage({
+        type: 'project:watch',
+        watch: msg.watch !== false,
+        root: projectRoot,
+        autoFallback: projectAutoFallback,
+      });
     } catch { /* host 刚断开，等 reconnect 时补发 */ }
     return;
   }
   if (msg.action !== 'project:command') return;
   if (typeof msg.root === 'string') projectRoot = msg.root.trim();
+  if (typeof msg.autoFallback === 'boolean') projectAutoFallback = msg.autoFallback;
   const requestId = msg.requestId;
   const port = ensureAiPort();
   if (!port) {
@@ -189,6 +214,7 @@ function forwardProjectCommand(pagePort, msg) {
       type: 'project:command',
       requestId,
       root: projectRoot,
+      autoFallback: projectAutoFallback,
       command: String(msg.command || ''),
       payload: msg.payload && typeof msg.payload === 'object' ? msg.payload : {},
     });

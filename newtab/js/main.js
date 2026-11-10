@@ -491,6 +491,7 @@ function buildConfigRows(w, def) {
           <span>${c.label}</span>
           <input type="checkbox" data-cfg="${c.key}" ${cur ? 'checked' : ''} />
         </label>
+        ${c.hint ? `<div class="wci-hint">${escapeAttr(c.hint)}</div>` : ''}
       `);
     } else if (c.type === 'select') {
       rows.push(`

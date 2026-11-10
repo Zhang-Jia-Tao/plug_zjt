@@ -417,6 +417,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.jn-pop-root.warn { color: #b45309; }
 .jn-pop-close {
   width: 24px;
   height: 24px;

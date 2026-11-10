@@ -72,22 +72,34 @@ function relativeTime(ts, now = Date.now()) {
 }
 
 function normalizeRootPath(value) {
-  return String(value || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+  return String(value || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/\//g, '\\')
+    .replace(/\\+$/, '')
+    .toLowerCase();
 }
 
 export default {
   key: 'javaNotes',
   label: 'Java 终极笔记 · 学习台',
   description: '一键启动 Java 终极笔记，查看今日复习、学习位置、批注与服务状态',
-  defaultData: { root: '' },
+  defaultData: { root: '', autoFallback: true },
   config: [
     {
       key: 'root',
       label: '启动目录',
       type: 'text',
       default: '',
-      placeholder: '留空使用 %USERPROFILE%\\IdeaProjects\\Java终极笔记',
-      hint: '支持 %USERPROFILE% 和 ~；必须是绝对路径。改完会自动重连 host。',
+      placeholder: '留空自动检测；例如 D:\\work\\Java终极笔记',
+      hint: '必须是项目根目录（直接包含 start.ps1 和 site/package.json）。支持 %USERPROFILE%、~ 和环境变量；留空会自动探测。',
+    },
+    {
+      key: 'autoFallback',
+      label: '目录失效时自动检测',
+      type: 'bool',
+      default: true,
+      hint: '配置目录不存在或不完整时，自动在用户目录下寻找包含 start.ps1 和 site/package.json 的项目。',
     },
   ],
 
@@ -152,6 +164,7 @@ export default {
     };
 
     const projectRoot = String(data?.root || '').trim();
+    const autoFallback = data?.autoFallback !== false;
     let current = null;
     let port = null;
     let disposed = false;
@@ -174,12 +187,12 @@ export default {
 
     function applyState(next) {
       if (!next || typeof next !== 'object') return;
-      // 多个学习台指向不同目录时，只认自己配置的目录；没配置时认 host 默认目录。
+      // 多个学习台指向不同目录时，只认自己配置的目录；没配置时接受 host
+      // 自动探测/环境变量/默认目录解析出的 root，不要拿 defaultRoot 强行过滤。
       // %VAR%/~ 由 host 展开，这里不做字符串比较，避免误判。
-      const expectedRoot = projectRoot || next.defaultRoot || '';
-      if (expectedRoot && next.root && !/[%]/.test(projectRoot) && !projectRoot.startsWith('~')
-        && normalizeRootPath(next.root) !== normalizeRootPath(expectedRoot)) {
-        return;
+      if (projectRoot && next.root && !/[%]/.test(projectRoot) && !projectRoot.startsWith('~')) {
+        const expectedRoot = next.requestedRoot || projectRoot;
+        if (normalizeRootPath(next.root) !== normalizeRootPath(expectedRoot)) return;
       }
       clearTimeout(firstStateTimer);
       hostError = '';
@@ -244,7 +257,7 @@ export default {
       refs.primary.className = `jn-primary${p.cls ? ' ' + p.cls : ''}`;
       refs.primary.setAttribute('aria-busy', p.cls === 'busy' ? 'true' : 'false');
       refs.detail.textContent = detailText();
-      refs.detail.title = detailText();
+      refs.detail.title = [detailText(), s?.rootWarning].filter(Boolean).join(' · ');
 
       const siteState = statusClass(s?.site);
       const annoState = statusClass(s?.anno);
@@ -299,6 +312,12 @@ export default {
       render();
     }
 
+    function errorText(e) {
+      const message = e?.message || '启动失败';
+      const detail = String(e?.detail || '').replace(/\s+/g, ' ').trim();
+      return detail && !message.includes(detail) ? `${message}（${detail.slice(0, 180)}）` : message;
+    }
+
     function openRoute(route) {
       const path = route && String(route).startsWith('/') ? route : '/';
       const url = `${SITE_BASE}${path}`;
@@ -322,14 +341,19 @@ export default {
       if (current?.state !== 'starting') {
         command('start', { withAnno: true }).catch((e) => {
           openWhenSiteReady = '';
-          setUiError(e?.message || '启动失败');
+          setUiError(errorText(e));
         });
       }
     }
 
     // ---- 与 host 的命令通道 ----
     function sendWatch(watch) {
-      const message = { action: 'project:watch', watch, root: projectRoot };
+      const message = {
+        action: 'project:watch',
+        watch,
+        root: projectRoot,
+        autoFallback,
+      };
       // 先用一次性消息唤醒 SW；长连接端口只负责接收推送，不承担上行。
       // 老版本后台不认 project:watch 时，再退回端口发送。
       try {
@@ -438,6 +462,7 @@ export default {
             action: 'project:command',
             requestId,
             root: projectRoot,
+            autoFallback,
             command: name,
             payload,
           }, (resp) => {
@@ -481,7 +506,7 @@ export default {
         })
         .catch((e) => {
           openWhenSiteReady = '';
-          setUiError(e?.message || '启动失败');
+          setUiError(errorText(e));
         });
     }
 
@@ -624,9 +649,17 @@ export default {
       popover.querySelector('[data-svc="site"]').dataset.state = statusClass(site);
       popover.querySelector('[data-svc="anno"]').dataset.state = statusClass(anno);
       const rootEl = popover.querySelector('[data-k="root"]');
-      const shownRoot = s.root || projectRoot || '默认目录';
-      rootEl.textContent = `目录：${shownRoot}`;
-      rootEl.title = shownRoot;
+      const shownRoot = s.root || projectRoot || '自动检测';
+      const sourceLabel = {
+        configured: '配置目录',
+        env: 'JAVA_NOTES_ROOT',
+        default: '默认目录',
+        auto: '自动检测',
+        fallback: '自动备用',
+      }[s.rootSource] || '';
+      rootEl.textContent = `目录：${shownRoot}${sourceLabel ? ` · ${sourceLabel}` : ''}`;
+      rootEl.title = s.rootWarning || shownRoot;
+      rootEl.classList.toggle('warn', !!s.rootWarning);
       const checked = s.checkedAt ? `更新于 ${relativeTime(s.checkedAt)}` : '等待状态';
       const learning = s.learning;
       const dataNote = learning?.ok

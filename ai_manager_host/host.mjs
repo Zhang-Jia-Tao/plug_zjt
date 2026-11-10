@@ -29,7 +29,7 @@ import { zstdDecompressSync } from 'node:zlib';
 import { extractModelInfo, formatAppDetail } from './probe.mjs';
 import { TaskTracker } from './task-tracker.mjs';
 import { scanZstdFrames } from './zstd-frames.mjs';
-import { JavaNotesProject, DEFAULT_PROJECT_ROOT, normalizeProjectRoot } from './project-supervisor.mjs';
+import { JavaNotesProject, resolveJavaNotesRoot } from './project-supervisor.mjs';
 import { fileURLToPath } from 'node:url';
 
 const HOST_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -140,9 +140,9 @@ function sameProjectRoot(a, b) {
     : norm(a) === norm(b);
 }
 
-function createJavaNotesProject(root) {
+function createJavaNotesProject(resolution) {
   const project = new JavaNotesProject({
-    root,
+    ...resolution,
     onState: (state) => post({ type: 'project:state', project: 'java-notes', state }),
   });
   project.start();
@@ -151,11 +151,16 @@ function createJavaNotesProject(root) {
 
 // 切换监管目录：不停止旧目录已经启动的服务，只切换监控/后续命令的目标。
 // 新目录会在下一次 4s 轮询（或首次 refresh）后给出状态。
-function switchJavaNotesRoot(rawRoot) {
-  const root = normalizeProjectRoot(rawRoot);
-  if (javaNotes && sameProjectRoot(javaNotes.root, root)) return javaNotes;
+function switchJavaNotesRoot(rawRoot, { autoFallback = true } = {}) {
+  const resolution = resolveJavaNotesRoot(rawRoot, { autoFallback });
+  const same = javaNotes
+    && sameProjectRoot(javaNotes.root, resolution.root)
+    && javaNotes.requestedRoot === resolution.requestedRoot
+    && javaNotes.rootSource === resolution.source
+    && javaNotes.rootWarning === resolution.warning;
+  if (same) return javaNotes;
   javaNotes?.dispose();
-  javaNotes = createJavaNotesProject(root);
+  javaNotes = createJavaNotesProject(resolution);
   post({
     type: 'project:state',
     project: 'java-notes',
@@ -206,8 +211,16 @@ function handleRequest(msg) {
       break;
     case 'project:watch':
       try {
+        const autoFallback = Object.prototype.hasOwnProperty.call(msg, 'autoFallback')
+          ? msg.autoFallback !== false
+          : undefined;
         // 老版本扩展不发 root；保持当前目录，避免误切回默认。
-        if (Object.prototype.hasOwnProperty.call(msg, 'root')) switchJavaNotesRoot(msg.root);
+        if (Object.prototype.hasOwnProperty.call(msg, 'root')) {
+          switchJavaNotesRoot(msg.root, { autoFallback: autoFallback !== false });
+        } else if (autoFallback !== undefined) {
+          // 只切换“目录失效时自动探测”的策略，不改变用户显式配置的目录。
+          switchJavaNotesRoot(javaNotes?.requestedRoot || '', { autoFallback });
+        }
         javaNotes?.setWatched(!!msg.watch);
         // 每次 watch 都回一份当前快照：组件在切换目录/端口重连后会重发
         // watch，如果状态签名没变（_emit 会去重），只靠下一次 tick 可能
@@ -216,14 +229,22 @@ function handleRequest(msg) {
           post({ type: 'project:state', project: 'java-notes', state: javaNotes.getSnapshot() });
         }
       } catch (e) {
-        post({ type: 'host:error', message: e?.message || String(e) });
+        const detail = e?.detail ? `；${e.detail}` : '';
+        post({ type: 'host:error', message: `${e?.message || String(e)}${detail}` });
       }
       break;
     case 'project:command': {
       const requestId = msg.requestId;
       let project = javaNotes;
       try {
-        if (Object.prototype.hasOwnProperty.call(msg, 'root')) project = switchJavaNotesRoot(msg.root);
+        const autoFallback = Object.prototype.hasOwnProperty.call(msg, 'autoFallback')
+          ? msg.autoFallback !== false
+          : undefined;
+        if (Object.prototype.hasOwnProperty.call(msg, 'root')) {
+          project = switchJavaNotesRoot(msg.root, { autoFallback: autoFallback !== false });
+        } else if (autoFallback !== undefined) {
+          project = switchJavaNotesRoot(javaNotes?.requestedRoot || '', { autoFallback });
+        }
       } catch (e) {
         post({
           type: 'project:result',
@@ -1577,6 +1598,6 @@ setInterval(checkDshBusyWatchdog, 5000).unref();
 setInterval(() => { if (taskTracker.tick()) syncTasks(); }, 5000).unref();
 scheduleSysmon();
 
-javaNotes = createJavaNotesProject(DEFAULT_PROJECT_ROOT);
+javaNotes = createJavaNotesProject(resolveJavaNotesRoot(''));
 
 post({ type: 'host:ready' });

@@ -64,10 +64,13 @@ uninstall-host.bat
 扩展的 `javaNotes` 2×1 组件通过 host 管理本地站点：
 
 - 默认项目根目录：`%USERPROFILE%\IdeaProjects\Java终极笔记`（可被组件配置或 `JAVA_NOTES_ROOT` 覆盖）
-- 组件设置「启动目录」后，通过 `project:watch` / `project:command` 的 `root` 字段传给 host；留空使用默认目录，支持 `%USERPROFILE%`、`~` 和引号，相对路径会被拒绝
-- host 启动时仍可用环境变量 `JAVA_NOTES_ROOT` 覆盖默认值
+- 组件「启动目录」通过 `project:watch` / `project:command` 的 `root` 字段传给 host；留空时按 `JAVA_NOTES_ROOT` → 默认目录 → `IdeaProjects`/`Projects` 浅扫描自动探测，支持 `%USERPROFILE%`、`~`、环境变量、引号和空格，相对路径会被拒绝
+- 根目录必须直接包含 `start.ps1`、`site/` 和 `site/package.json`；缺任何一项都会返回 `project_missing` / `start_script_missing` / `site_invalid` 及具体缺失项
+- 组件可关闭「目录失效时自动检测」；开启时显式目录不存在或不完整会改用探测到的目录，并把 `rootSource=fallback`、`rootWarning` 回传给界面
 - 端口归属按该目录 `.run/pids.json` 的 PID 判断；切换到另一个目录后，原目录的 4321/4400 会被显示为端口冲突，而不是误认成新目录的服务
 - 4321：Astro dev / preview；4400：批注与统计服务
+- `start.ps1` 的 stdout/stderr 会写入 `.run/start.log`，启动失败时 `lastError` 会带上最后一行原因；首次安装依赖的启动超时为 5 分钟
+- 换机器/换目录：项目根目录必须含 `start.ps1`、`site/package.json`；从别的机器复制时先删除 `site/node_modules`，让 `start.ps1` 重新安装依赖；扩展安装路径变化会改变扩展 ID，需重新运行 `install-host.bat <新扩展ID>` 并刷新浏览器
 - 学习数据优先走 4400 的 `/api/usage/summary`、`/api/review/log`、`/api/anno/all`；
   服务离线时回退到 `site/server-data/*.json` 快照，并在 UI 标记为「本地文件快照」
 - 状态事件 `project:state`，命令结果 `project:result`；具体字段见 `project-supervisor.mjs`
@@ -106,11 +109,11 @@ host 侧另有 **512 KB 快照预算**：`snapshot` 只带回最近 30 秒的消
 { "type": "query" }
 { "type": "sysmon", "fast": true }
 { "type": "dialog:respond", "dialogId": 12345, "buttonId": "确定" }
-{ "type": "project:watch", "watch": true, "root": "D:\\code\\Java终极笔记" }
-{ "type": "project:command", "requestId": "uuid", "root": "D:\\code\\Java终极笔记", "command": "start", "payload": { "withAnno": true } }
+{ "type": "project:watch", "watch": true, "root": "D:\\code\\Java终极笔记", "autoFallback": true }
+{ "type": "project:command", "requestId": "uuid", "root": "D:\\code\\Java终极笔记", "autoFallback": true, "command": "start", "payload": { "withAnno": true } }
 ```
 
-- `project:watch` / `project:command` 的可选 `root` 为启动目录；省略时沿用当前目录，空字符串表示回到默认目录。host 会把 `root` 归一化为绝对路径，非法路径返回 `invalid_root`。
+- `project:watch` / `project:command` 的可选 `root` 为启动目录；省略时沿用当前目录，空字符串表示自动探测。host 会把 `root` 归一化为绝对路径，非法路径返回 `invalid_root`；`autoFallback` 控制显式目录失效时是否自动改用探测结果，默认 `true`。
 - `project:command` 白名单：`start` / `stop` / `restart` / `build` / `backup` / `logs` / `refresh`。
   命令立即返回 `project:result`，启动/构建的后续状态由 `project:state` 推送。
 

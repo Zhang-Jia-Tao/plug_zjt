@@ -1,7 +1,8 @@
 // project-supervisor.mjs — 本地「Java 终极笔记」项目监管
 // 职责：探测 4321/4400、启动/停止/重启/构建、读取学习数据、导出备份、读取日志。
 // 设计边界：
-// - 只操作一个固定项目（路径可用 JAVA_NOTES_ROOT 覆盖），不接受页面传入任意路径/命令；
+// - 只操作一个固定项目（路径来自组件配置、JAVA_NOTES_ROOT 或本机浅扫描），
+//   不接受页面传入任意路径/命令；
 // - 端口被其他程序占用时拒绝启动，不按端口杀进程；
 // - 停止前用进程命令行确认是本项目 node 进程，避免误杀；
 // - 学习数据优先读批注服务 HTTP，失败时回退到 server-data 文件快照。
@@ -20,7 +21,7 @@ const PORT_TIMEOUT_MS = 500;
 const FAST_POLL_MS = 4000;
 const SLOW_POLL_MS = 15000;
 const BUSY_POLL_MS = 900;
-const START_TIMEOUT_MS = 180_000;
+const START_TIMEOUT_MS = 300_000;
 const BUILD_TIMEOUT_MS = 300_000;
 const SITE_ONLY_GRACE_MS = 65_000;
 const MAX_LOG_CHARS = 16_000;
@@ -57,6 +58,191 @@ export function normalizeProjectRoot(raw, {
     throw new ProjectError('invalid_root', `启动目录必须是绝对路径：${text}`);
   }
   return path.resolve(text);
+}
+
+// 项目根目录不是「有 site/ 就够了」：启动脚本和 site/package.json 同样必须存在，
+// 否则 host 会在一键启动时才拿到一个难以定位的 PowerShell 退出码。
+export function inspectProjectRoot(root) {
+  const target = path.resolve(String(root || ''));
+  const stat = (file) => {
+    try { return fs.statSync(file); } catch { return null; }
+  };
+  const rootStat = stat(target);
+  const startStat = stat(path.join(target, 'start.ps1'));
+  const siteStat = stat(path.join(target, 'site'));
+  const packageStat = stat(path.join(target, 'site', 'package.json'));
+  const checks = {
+    exists: !!rootStat?.isDirectory(),
+    startScript: !!startStat?.isFile(),
+    site: !!siteStat?.isDirectory(),
+    packageJson: !!packageStat?.isFile(),
+  };
+  const missing = [];
+  if (!checks.exists) missing.push('项目目录');
+  else {
+    if (!checks.startScript) missing.push('start.ps1');
+    if (!checks.site) missing.push('site/');
+    else if (!checks.packageJson) missing.push('site/package.json');
+  }
+  return {
+    root: target,
+    ...checks,
+    missing,
+    valid: missing.length === 0,
+  };
+}
+
+function rootProblem(check) {
+  if (!check.exists) {
+    return { code: 'project_missing', message: `项目目录不存在：${check.root}` };
+  }
+  if (!check.startScript) {
+    return { code: 'start_script_missing', message: `项目根目录缺少 start.ps1：${check.root}` };
+  }
+  if (!check.site) {
+    return { code: 'project_missing', message: `项目缺少 site/ 目录：${check.root}` };
+  }
+  if (!check.packageJson) {
+    return { code: 'site_invalid', message: `site/ 缺少 package.json：${check.root}` };
+  }
+  return { code: 'project_invalid', message: `项目目录不完整：${check.root}` };
+}
+
+function sameRoot(a, b) {
+  const norm = (value) => String(value || '').replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase();
+  return norm(a) === norm(b);
+}
+
+function candidate(root, source) {
+  const check = inspectProjectRoot(root);
+  return { root: check.root, source, checks: check, valid: check.valid };
+}
+
+function candidateText(candidates) {
+  const valid = candidates.filter((c) => c.valid).map((c) => c.root);
+  const unique = [...new Set(valid)];
+  if (unique.length) return `可用目录：${unique.join('；')}`;
+  return '没有找到可用目录；项目根目录必须直接包含 start.ps1 和 site/package.json。';
+}
+
+// 自动探测只在本机用户目录下做一层浅扫描，不递归全盘搜索。
+// 顺序：JAVA_NOTES_ROOT → 默认目录 → IdeaProjects/Projects 下名字像 Java 笔记的目录。
+export function discoverJavaNotesRoots({
+  defaultRoot = DEFAULT_PROJECT_ROOT,
+  env = process.env,
+  searchRoots,
+  home = env.USERPROFILE || env.HOME || os.homedir(),
+} = {}) {
+  const candidates = [];
+  const add = (root, source) => {
+    if (!root) return;
+    const target = path.resolve(String(root));
+    if (candidates.some((c) => sameRoot(c.root, target))) return;
+    candidates.push(candidate(target, source));
+  };
+
+  const envRoot = String(env.JAVA_NOTES_ROOT || '').trim();
+  if (envRoot) {
+    try {
+      add(normalizeProjectRoot(envRoot, { defaultRoot, env }), 'env');
+    } catch {
+      // 非法环境变量不阻断组件里显式配置的目录；保留默认候选继续探测。
+    }
+  }
+  add(defaultRoot, 'default');
+
+  const roots = searchRoots || [
+    path.join(home, 'IdeaProjects'),
+    path.join(home, 'Projects'),
+    path.join(home, 'source', 'repos'),
+  ];
+  for (const base of roots) {
+    let entries = [];
+    try { entries = fs.readdirSync(base, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries.slice(0, 80)) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      if (!/java|笔记|notes/i.test(entry.name)) continue;
+      add(path.join(base, entry.name), 'auto');
+    }
+  }
+  return candidates;
+}
+
+// 解析最终生效的启动目录：
+// - 用户显式配置有效 → 直接用；
+// - 显式配置缺失/不完整 → 默认自动寻找可用目录，并携带 warning 让 UI 明示；
+// - 留空 → 按环境变量/默认目录/浅扫描顺序自动探测；
+// - 都找不到 → 返回默认路径，让启动命令给出具体的目录缺失错误。
+export function resolveJavaNotesRoot(rawRoot, {
+  defaultRoot = DEFAULT_PROJECT_ROOT,
+  env = process.env,
+  autoFallback = true,
+  searchRoots,
+} = {}) {
+  const text = String(rawRoot ?? '').trim();
+  const requestedRoot = text
+    ? normalizeProjectRoot(text, { defaultRoot, env })
+    : '';
+  const candidates = discoverJavaNotesRoots({ defaultRoot, env, searchRoots });
+  const requestedCheck = requestedRoot ? inspectProjectRoot(requestedRoot) : null;
+  if (requestedCheck && !candidates.some((c) => sameRoot(c.root, requestedRoot))) {
+    candidates.unshift({ root: requestedCheck.root, source: 'configured', checks: requestedCheck, valid: requestedCheck.valid });
+  }
+
+  if (requestedCheck) {
+    if (requestedCheck.valid) {
+      return {
+        root: requestedCheck.root,
+        requestedRoot,
+        defaultRoot: path.resolve(defaultRoot),
+        source: 'configured',
+        warning: '',
+        checks: requestedCheck,
+        candidates,
+      };
+    }
+    const problem = rootProblem(requestedCheck);
+    if (!autoFallback) {
+      throw new ProjectError(problem.code, problem.message, candidateText(candidates));
+    }
+    const fallback = candidates.find((c) => c.valid && !sameRoot(c.root, requestedRoot));
+    if (fallback) {
+      return {
+        root: fallback.root,
+        requestedRoot,
+        defaultRoot: path.resolve(defaultRoot),
+        source: 'fallback',
+        warning: `配置目录不可用，已自动改用：${fallback.root}`,
+        checks: fallback.checks,
+        candidates,
+      };
+    }
+    throw new ProjectError(problem.code, problem.message, candidateText(candidates));
+  }
+
+  const detected = candidates.find((c) => c.valid);
+  if (detected) {
+    return {
+      root: detected.root,
+      requestedRoot: '',
+      defaultRoot: path.resolve(defaultRoot),
+      source: detected.source,
+      warning: detected.source === 'auto' ? `已自动检测到项目目录：${detected.root}` : '',
+      checks: detected.checks,
+      candidates,
+    };
+  }
+
+  const fallbackCheck = inspectProjectRoot(defaultRoot);
+  return {
+    root: fallbackCheck.root,
+    requestedRoot: '',
+    defaultRoot: path.resolve(defaultRoot),
+    source: 'default',
+    warning: '未自动检测到完整项目目录，请在组件设置中填写启动目录。',
+    checks: fallbackCheck,
+    candidates,
+  };
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -174,6 +360,11 @@ function emptyState() {
   return {
     project: 'java-notes',
     root: '',
+    requestedRoot: '',
+    defaultRoot: '',
+    rootSource: 'default',
+    rootWarning: '',
+    rootChecks: null,
     state: 'unknown',
     phase: 'idle',
     message: '',
@@ -307,8 +498,21 @@ async function listenerPid(port) {
 }
 
 export class JavaNotesProject {
-  constructor({ root = process.env.JAVA_NOTES_ROOT || DEFAULT_PROJECT_ROOT, onState = () => {}, now = () => Date.now() } = {}) {
+  constructor({
+    root = process.env.JAVA_NOTES_ROOT || DEFAULT_PROJECT_ROOT,
+    requestedRoot = '',
+    source = 'configured',
+    warning = '',
+    defaultRoot = DEFAULT_PROJECT_ROOT,
+    onState = () => {},
+    now = () => Date.now(),
+  } = {}) {
     this.root = path.resolve(root);
+    this.requestedRoot = requestedRoot;
+    this.rootSource = source;
+    this.rootWarning = warning;
+    this.defaultRoot = path.resolve(defaultRoot);
+    this.rootChecks = inspectProjectRoot(this.root);
     this.siteDir = path.join(this.root, 'site');
     this.runDir = path.join(this.root, '.run');
     this.onState = onState;
@@ -316,7 +520,11 @@ export class JavaNotesProject {
 
     this.state = emptyState();
     this.state.root = this.root;
-    this.state.defaultRoot = DEFAULT_PROJECT_ROOT;
+    this.state.requestedRoot = this.requestedRoot;
+    this.state.defaultRoot = this.defaultRoot;
+    this.state.rootSource = this.rootSource;
+    this.state.rootWarning = this.rootWarning;
+    this.state.rootChecks = this.rootChecks;
     this.busy = false;
     this.phase = 'idle';
     this.lastError = null;
@@ -433,6 +641,7 @@ export class JavaNotesProject {
     if (this.polling) return this.state;
     this.polling = true;
     try {
+      this.rootChecks = inspectProjectRoot(this.root);
       const pids = readJsonFile(path.join(this.runDir, 'pids.json')) || {};
       const pidsMtime = this._fileMtime(path.join(this.runDir, 'pids.json'));
       const sitePid = pids.site && pidAlive(Number(pids.site)) ? Number(pids.site) : null;
@@ -517,6 +726,11 @@ export class JavaNotesProject {
       this.state = {
         ...this.state,
         root: this.root,
+        requestedRoot: this.requestedRoot,
+        defaultRoot: this.defaultRoot,
+        rootSource: this.rootSource,
+        rootWarning: this.rootWarning,
+        rootChecks: this.rootChecks,
         state,
         busy: this.busy,
         phase: this.phase,
@@ -586,11 +800,10 @@ export class JavaNotesProject {
     if (this.busy) {
       return { ok: true, message: this.state.message || '已在启动中', state: this.getSnapshot() };
     }
-    if (!fs.existsSync(this.root)) {
-      throw new ProjectError('project_missing', `项目目录不存在：${this.root}`);
-    }
-    if (!fs.existsSync(this.siteDir)) {
-      throw new ProjectError('project_missing', '项目缺少 site/ 目录');
+    this.rootChecks = inspectProjectRoot(this.root);
+    if (!this.rootChecks.valid) {
+      const problem = rootProblem(this.rootChecks);
+      throw new ProjectError(problem.code, problem.message, `缺少：${this.rootChecks.missing.join('、')}`);
     }
 
     await this.refresh();
@@ -722,6 +935,7 @@ export class JavaNotesProject {
   async _commandLogs({ tail = 80 } = {}) {
     const n = Math.max(20, Math.min(200, Number(tail) || 80));
     const files = [
+      ['start.log', '启动脚本'],
       ['site.log', '站点'],
       ['site.err.log', '站点错误'],
       ['anno.log', '批注服务'],
@@ -775,27 +989,70 @@ export class JavaNotesProject {
     if (build) args.push('-Build');
     if (!withAnno) args.push('-NoEditor');
     // 注意：Windows + Node 的 detached:true 会创建一个没有控制台的进程，
-    // 在当前环境里 PowerShell 会直接 exit 0 而不执行脚本。保持普通子进程 +
-    // stdio:'ignore'，再 unref，让宿主退出时事件循环不被它拖住；项目进程由
-    // start.ps1 内部的 Start-Process 启动，本身不依赖宿主的生命周期。
+    // 在当前环境里 PowerShell 会直接 exit 0 而不执行脚本。保持普通子进程，
+    // 把 stdout/stderr 收进 .run/start.log：失败时 UI 至少能看到最后一行原因，
+    // 而不是只拿到一个 code 1。项目进程由 start.ps1 内部的 Start-Process 启动，
+    // 不依赖宿主的生命周期。
+    try { fs.mkdirSync(this.runDir, { recursive: true }); } catch {}
+    const logFile = path.join(this.runDir, 'start.log');
+    let tail = `[${new Date().toISOString()}] ${script}\n`;
+    let reported = false;
+    let lastWrite = 0;
+    // Windows PowerShell 5.1 的 stdout 是系统代码页（中文机器是 GBK），
+    // 直接用 UTF-8 解码会把 start.ps1 的中文错误变成乱码。
+    let decoder;
+    try {
+      decoder = new TextDecoder(process.platform === 'win32' ? 'gbk' : 'utf-8');
+    } catch {
+      decoder = new TextDecoder();
+    }
+    const writeLog = () => {
+      try { fs.writeFileSync(logFile, tail, 'utf8'); } catch {}
+    };
+    const capture = (chunk) => {
+      try {
+        let text;
+        if (typeof chunk === 'string') text = chunk;
+        else text = decoder.decode(chunk, { stream: true });
+        tail = (tail + stripAnsi(text)).slice(-MAX_LOG_CHARS);
+        // 进程还在跑时也定期落盘，用户点「日志」不必等退出。
+        if (Date.now() - lastWrite > 500) {
+          lastWrite = Date.now();
+          writeLog();
+        }
+      } catch {}
+    };
+    const failOnce = (code, message) => {
+      if (reported) return;
+      reported = true;
+      if (this.busy && (this.phase === 'starting_site' || this.phase === 'building')) {
+        this._fail(code, message, tail);
+      }
+    };
     const child = spawn('powershell.exe', args, {
       cwd: this.root,
       env: { ...process.env, NO_OPEN: '1' },
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
+    child.stdout?.on('data', capture);
+    child.stderr?.on('data', capture);
     child.unref();
     this.startChild = child;
+    writeLog();
     child.once('error', (e) => {
-      if (this.busy && (this.phase === 'starting_site' || this.phase === 'building')) {
-        this._fail('spawn_failed', `无法启动 PowerShell：${e?.message || e}`);
-      }
+      capture(`\n无法启动 PowerShell：${e?.message || e}\n`);
+      writeLog();
+      failOnce('spawn_failed', `无法启动 PowerShell：${e?.message || e}`);
     });
-    child.once('exit', (code) => {
-      if (code && code !== 0 && this.busy
-        && (this.phase === 'starting_site' || this.phase === 'building')) {
-        this._fail('start_failed', `启动脚本退出（code ${code}），请查看日志`);
-      }
+    child.once('close', (code, signal) => {
+      try { capture(decoder.decode()); } catch {}
+      writeLog();
+      if (code === 0) return;
+      const lines = tail.trim().split(/\r?\n/).filter(Boolean);
+      const lastLine = lines.length > 1 ? lines.at(-1) : '';
+      const suffix = lastLine ? `：${lastLine.slice(0, 240)}` : '';
+      failOnce('start_failed', `启动脚本失败（${code ?? signal ?? '无退出码'}）${suffix}`);
     });
   }
 
